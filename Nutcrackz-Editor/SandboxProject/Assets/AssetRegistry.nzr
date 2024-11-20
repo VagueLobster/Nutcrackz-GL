@@ -1,0 +1,4 @@
+AssetRegistry:
+  - Handle: 13960236995167982461
+    FilePath: ../Resources/Images/Checkerboard.png
+    Type: Texture2D

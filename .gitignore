@@ -1,0 +1,23 @@
+# Binaries
+**/bin/
+!vendor/premake/bin/
+bin-int/
+
+# Nutcrackz files
+*.log
+
+# Visual Studio files and folder
+.vs/
+**.sln
+**.csproj
+**.vcxproj
+**.vcxproj.filters
+**.vcxproj.user
+
+# Directories
+Nutcrackz-Editor/assets/cache
+Nutcrackz-Editor/Resources/Scripts/Intermediates/
+Nutcrackz-Editor/Resources/Scripts/net8.0/
+Nutcrackz-ScriptCore/obj/
+Nutcrackz/vendor/VulkanSDK
+scripts/__pycache__

@@ -1,0 +1,39 @@
+#pragma once
+
+#include "AssetManagerBase.hpp"
+#include "AssetMetadata.hpp"
+
+#include <map>
+
+namespace Nutcrackz {
+
+	using AssetRegistry = std::map<AssetHandle, AssetMetadata>;
+
+	class EditorAssetManager : public AssetManagerBase
+	{
+	public:
+		virtual RefPtr<Asset> GetAsset(AssetHandle handle) override;
+
+		virtual bool IsAssetHandleValid(AssetHandle handle) const override;
+		virtual bool IsAssetLoaded(AssetHandle handle) const override;
+		virtual AssetType GetAssetType(AssetHandle handle) const override;
+
+		void ImportAsset(const std::filesystem::path& filepath);
+		void ImportScriptAsset(const std::filesystem::path& filepath, uint64_t uuid);
+
+		const AssetMetadata& GetMetadata(AssetHandle handle) const;
+		const std::filesystem::path& GetFilePath(AssetHandle handle) const;
+
+		const AssetRegistry& GetAssetRegistry() const { return m_AssetRegistry; }
+
+		void SerializeAssetRegistry();
+		bool DeserializeAssetRegistry();
+
+	private:
+		AssetRegistry m_AssetRegistry;
+		AssetMap m_LoadedAssets;
+
+		// TODO: memory-only assets
+	};
+
+}

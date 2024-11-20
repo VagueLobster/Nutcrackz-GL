@@ -1,0 +1,21 @@
+{
+    "FramesToStep": 1,
+    "ShowEditorViewport": true,
+    "ShowSettingsViewport": true,
+    "Show2DStatisticsViewport": true,
+    "ShowAboutPopupWindow": false,
+    "ShowNewProjectPopupWindow": false,
+    "ShowEditProjectPopupWindow": false,
+    "ShowEditGravityPopupWindow": false,
+    "ShowingAboutPopupWindow": false,
+    "ShowSceneHierarchy": true,
+    "ShowProperties": false,
+    "ShowContentBrowserPanel": true,
+    "ShowLogPanel": true,
+    "AnimateTexturesInEdit": false,
+    "UseGreenDarkTheme": false,
+    "UseOrangeDarkTheme": false,
+    "UseLightTheme": false,
+    "UseGoldDarkTheme": false,
+    "UseChocolateTheme": true
+}

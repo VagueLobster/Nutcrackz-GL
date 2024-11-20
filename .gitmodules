@@ -1,0 +1,34 @@
+[submodule "Nutcrackz/vendor/spdlog"]
+	path = Nutcrackz/vendor/spdlog
+	url = https://github.com/VagueLobster/spdlog.git
+	branch = v1.x
+[submodule "Nutcrackz/vendor/glfw"]
+	path = Nutcrackz/vendor/glfw
+	url = https://github.com/VagueLobster/glfw.git
+	branch = master
+[submodule "Nutcrackz/vendor/imgui"]
+	path = Nutcrackz/vendor/imgui
+	url = https://github.com/VagueLobster/imgui.git
+	branch = docking
+[submodule "Nutcrackz/vendor/glm"]
+	path = Nutcrackz/vendor/glm
+	url = https://github.com/VagueLobster/glm.git
+	branch = master
+[submodule "Nutcrackz/vendor/yaml-cpp"]
+	path = Nutcrackz/vendor/yaml-cpp
+	url = https://github.com/VagueLobster/yaml-cpp
+[submodule "Nutcrackz/vendor/ImGuizmo"]
+	path = Nutcrackz/vendor/ImGuizmo
+	url = https://github.com/VagueLobster/imguizmo
+[submodule "Nutcrackz/vendor/msdf-atlas-gen"]
+	path = Nutcrackz/vendor/msdf-atlas-gen
+	url = https://github.com/TheCherno/msdf-atlas-gen
+[submodule "Nutcrackz/vendor/Coral"]
+	path = Nutcrackz/vendor/Coral
+	url = https://github.com/StudioCherno/Coral
+[submodule "Nutcrackz/vendor/box2d"]
+	path = Nutcrackz/vendor/box2d
+	url = https://github.com/VagueLobster/box2d.git
+[submodule "Nutcrackz/vendor/rtmcpp"]
+	path = Nutcrackz/vendor/rtmcpp
+	url = https://github.com/peter1745/rtmcpp.git

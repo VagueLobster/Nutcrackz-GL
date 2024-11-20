@@ -1,0 +1,11 @@
+*.sln
+*.vcxproj
+*.vcxproj.user
+*.vcxproj.filters
+
+.vs/
+.idea/
+**/cmake-build-debug/**
+**/bin/**
+**/obj/**
+
