@@ -7,6 +7,4 @@ My Undo/Redo system i got from this YT video by [GamesWithGabe](https://www.yout
 
 I've also gotten some help from my friend [abbator](https://github.com/abbator)!
 
-This engine won't be very actively developed on anymore, but may still make some changes now and then.
-
-If you want to make a PR, feel free to do so, then i'll have a look at it when i have the time.
+This engine won't be very actively developed on anymore, but I may still make some changes now and then.
