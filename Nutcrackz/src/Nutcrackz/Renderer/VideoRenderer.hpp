@@ -18,7 +18,7 @@ namespace Nutcrackz {
 		static void EndScene();
 		static void Flush();
 
-		static void DrawVideoSprite(TransformComponent& transform, VideoRendererComponent& src, VideoData& data, int entityID = -1);
+		static void DrawVideoSprite(TransformComponent& transform, VideoRendererComponent& src, Timestep ts, int entityID = -1);
 
 		static void ResetPacketDuration(VideoRendererComponent& src);
 
@@ -26,9 +26,8 @@ namespace Nutcrackz {
 		static void StartBatch();
 		static void NextBatch();
 
-		static void RenderVideo(TransformComponent& transform, VideoRendererComponent& src/*, VideoData& data*/, int entityID);
-		static void RenderStartFrame(TransformComponent& transform, VideoRendererComponent& src, VideoData& data, int entityID);
-		static void SeekToFrame(TransformComponent& transform, VideoRendererComponent& src, VideoData& data, int entityID);
+		static void RenderVideo(TransformComponent& transform, VideoRendererComponent& src, Timestep ts, int entityID);
+		static void RenderFrame(TransformComponent& transform, VideoRendererComponent& src, int entityID);
 	};
 
 };

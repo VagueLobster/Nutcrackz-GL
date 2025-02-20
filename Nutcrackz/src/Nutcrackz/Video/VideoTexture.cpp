@@ -1,6 +1,8 @@
 #include "nzpch.hpp"
 #include "VideoTexture.hpp"
 
+#include "Nutcrackz/Utils/Timer.hpp"
+
 #include <glad/glad.h>
 
 namespace Nutcrackz {
@@ -101,8 +103,9 @@ namespace Nutcrackz {
 		{
 			//m_IsVideoLoaded = true;
 
-			int64_t pts;
-			if (!VideoReaderReadFrame(&m_VideoState, data.Data, &pts, false))
+			//int64_t pts;
+			double outMilliseconds = 0.0;
+			if (!VideoReaderReadFrame(&m_VideoState, data.Data, &m_VideoState.Pts, false, 0, outMilliseconds))
 			{
 				NZ_CORE_WARN("Couldn't load video frame!");
 				return;
@@ -127,7 +130,7 @@ namespace Nutcrackz {
 		}
 	}
 
-	uint32_t VideoTexture::GetIDFromTexture(uint8_t* frameData, int64_t* pts, bool isPaused, const std::filesystem::path& filepath)
+	uint32_t VideoTexture::GetIDFromTexture(uint8_t* frameData, int64_t* pts, bool& seek, bool isPaused, const std::filesystem::path& filepath, double ts, double& outMilliseconds)
 	{
 		//NZ_PROFILE_FUNCTION("VideoTexture::GetIDFromTexture");
 
@@ -138,6 +141,18 @@ namespace Nutcrackz {
 				NZ_CORE_WARN("Couldn't load video file!");
 				return 0;
 			}
+			
+			m_Filepath = filepath.string();
+
+			/*const int frameWidth = m_Width;
+			const int frameHeight = m_Height;
+			frameData = new uint8_t[frameWidth * frameHeight * 4];
+
+			if (!VideoReaderReadFrame(&m_VideoState, frameData, pts, isPaused, ts))
+			{
+				NZ_CORE_WARN("Couldn't load video frame!");
+				return 0;
+			}*/
 
 			m_IsVideoLoaded = true;
 		}
@@ -150,7 +165,26 @@ namespace Nutcrackz {
 			const int frameHeight = m_Height;
 			frameData = new uint8_t[frameWidth * frameHeight * 4];
 
-			if (!VideoReaderReadFrame(&m_VideoState, frameData, pts, isPaused))
+			if (seek)
+			{
+				//SetAudioRingStreamPTS(*pts);
+
+				//if (!VideoReaderSeekFrame(&m_VideoState, ts))
+				//{
+				//	NZ_CORE_WARN("Could not seek the audio back to start frame!");
+				//	return 0;
+				//}
+
+				if (!AVReaderSeekFrame(&m_VideoState, ts))
+				{
+					NZ_CORE_WARN("Could not seek the audio back to start frame!");
+					return 0;
+				}
+
+				seek = false;
+			}
+
+			if (!VideoReaderReadFrame(&m_VideoState, frameData, pts, isPaused, ts, outMilliseconds))
 			{
 				NZ_CORE_WARN("Couldn't load video frame!");
 				return 0;
@@ -269,16 +303,19 @@ namespace Nutcrackz {
 
 		state->Framerate = av_q2d(avFormatContext->streams[videoStreamIndex]->r_frame_rate);
 
+		//NZ_CORE_CRITICAL("nb_frames: {}", videoStream->nb_frames);
+		//NZ_CORE_CRITICAL("nb_samples: {}", avFrame->nb_samples);
+
 		int hoursToSeconds = state->Hours * 3600;
 		int minutesToSeconds = state->Mins * 60;
 
 		state->Duration = hoursToSeconds + minutesToSeconds + state->Secs + (0.01 * ((100 * state->Us) / AV_TIME_BASE));
 		state->NumberOfFrames = (int64_t)(state->Framerate * state->Duration);
 
-		int numerator = avFormatContext->streams[videoStreamIndex]->r_frame_rate.num;
-		int denominator = avFormatContext->streams[videoStreamIndex]->r_frame_rate.den;
-		int avgNumerator = avFormatContext->streams[videoStreamIndex]->avg_frame_rate.num;
-		int avgDenominator = avFormatContext->streams[videoStreamIndex]->avg_frame_rate.den;
+		//int numerator = avFormatContext->streams[videoStreamIndex]->r_frame_rate.num;
+		//int denominator = avFormatContext->streams[videoStreamIndex]->r_frame_rate.den;
+		//int avgNumerator = avFormatContext->streams[videoStreamIndex]->avg_frame_rate.num;
+		//int avgDenominator = avFormatContext->streams[videoStreamIndex]->avg_frame_rate.den;
 
 		videoStream = avFormatContext->streams[videoStreamIndex];
 
@@ -324,7 +361,7 @@ namespace Nutcrackz {
 		return true;
 	}
 
-	bool VideoTexture::VideoReaderReadFrame(VideoReaderState* state, uint8_t* frameBuffer, int64_t* pts, bool isPaused)
+	bool VideoTexture::VideoReaderReadFrame(VideoReaderState* state, uint8_t* frameBuffer, int64_t* pts, bool isPaused, double ts, double& outMilliseconds)
 	{
 		//NZ_PROFILE_FUNCTION("VideoTexture::VideoReaderReadFrame");
 
@@ -387,6 +424,11 @@ namespace Nutcrackz {
 			*pts = avFrame->pts;
 		}
 
+		// Convert packet time (here, dts) to seconds with:  
+		outMilliseconds = (avFrame->pts - videoStream->start_time) * av_q2d(videoStream->time_base) * 1000.0;
+
+		//NZ_CORE_CRITICAL("avFrame->pts: {}", avFrame->pts);
+
 		SwsContext* swsScalerContext;
 		auto srcPixelFormat = Utils::CorrectForDeprecatedPixelFormat(avCodecContext->pix_fmt);
 		swsScalerContext = sws_getContext(width, height, srcPixelFormat, width, height, AV_PIX_FMT_RGB0, SWS_BILINEAR, NULL, NULL, NULL);
@@ -406,62 +448,28 @@ namespace Nutcrackz {
 		return true;
 	}
 
-	bool VideoTexture::VideoReaderSeekFrame(VideoReaderState* state, int64_t ts)
+	bool VideoTexture::VideoReaderSeekFrame(VideoReaderState* state, double ts)
 	{
 		//NZ_PROFILE_FUNCTION("VideoTexture::VideoReaderSeekFrame");
 
 		// Unpack members of state
-		auto& avFormatContext = state->VideoFormatContext;
-		auto& avCodecContext = state->VideoCodecContext;
-		auto& videoStreamIndex = state->VideoStreamIndex;
-		auto& avPacket = state->VideoPacket;
+		auto& avFormatContext = state->AudioFormatContext;
 		auto& avFrame = state->VideoFrame;
-		auto& videoStream = state->VideoStream;
-		auto& timeBase = state->TimeBase;
-
-		int64_t videoPts = av_rescale_q(ts, timeBase, videoStream->time_base);
-		av_seek_frame(avFormatContext, videoStreamIndex, videoPts, AVSEEK_FLAG_BACKWARD);
-
-		avcodec_flush_buffers(avCodecContext);
-
-		// av_seek_frame takes effect after one frame, so I'm decoding one here
-		// so that the next call to video_reader_read_frame() will give the correct frame
-		int response;
+		
 		if (avFormatContext != nullptr)
 		{
-			while (av_read_frame(avFormatContext, avPacket) >= 0)
+			if (ts < 0.0)
+				ts = 0.0;
+
+			int64_t target_ts = int64_t(AV_TIME_BASE * ts);
+
+			if (avformat_seek_file(avFormatContext, -1, INT64_MIN, target_ts, INT64_MAX, 0) < 0)
 			{
-				if (avPacket->stream_index != videoStreamIndex)
-				{
-					av_packet_unref(avPacket);
-					continue;
-				}
-
-				response = avcodec_send_packet(avCodecContext, avPacket);
-
-
-				if (response < 0)
-				{
-					NZ_CORE_ERROR("Failed to decode AVPacket: {0}!", Utils::GetAVError(response));
-					return false;
-				}
-
-				response = avcodec_receive_frame(avCodecContext, avFrame);
-
-				if (response == AVERROR(EAGAIN) || response == AVERROR_EOF)
-				{
-					av_packet_unref(avPacket);
-					continue;
-				}
-				else if (response < 0)
-				{
-					NZ_CORE_ERROR("Failed to decode AVPacket: {0}!", Utils::GetAVError(response));
-					return false;
-				}
-
-				av_packet_unref(avPacket);
-				break;
+				NZ_CORE_ERROR("Failed to seek video!");
+				return false;
 			}
+
+			avFrame->pts = target_ts;
 		}
 
 		return true;
@@ -590,7 +598,7 @@ namespace Nutcrackz {
 		return true;
 	}
 
-	bool VideoTexture::AudioReaderReadFrame(VideoReaderState* state, bool isPaused)
+	bool VideoTexture::AudioReaderReadFrame(VideoReaderState* state, bool isPaused, int64_t ts)
 	{
 		//NZ_PROFILE_FUNCTION("VideoTexture::AudioReaderReadFrame");
 
@@ -602,6 +610,7 @@ namespace Nutcrackz {
 		auto& avPacket = state->AudioPacket;
 		auto& audioStream = state->AudioStream;
 		auto& audioFifo = state->AudioFifo;
+		auto& timeBase = state->TimeBase;
 
 		AVSampleFormat sampleFormat = (AVSampleFormat)audioStream->codecpar->format;
 		int outSampleFormat = Utils::FromFFmpegAudioToIntFormat(sampleFormat);
@@ -642,6 +651,8 @@ namespace Nutcrackz {
 			if (state->AudioPacketDuration != avPacket->duration)
 				state->AudioPacketDuration = avPacket->duration;
 
+			//NZ_CORE_WARN("Duration: {}", state->AudioPacketDuration);
+
 			if (response < 0)
 			{
 				if (response != AVERROR(EAGAIN))
@@ -667,7 +678,7 @@ namespace Nutcrackz {
 				av_frame_free(&resampledFrame);
 			}
 		}
-
+		
 		if (m_InitializedAudio)
 		{
 			ma_device_config deviceConfig;
@@ -701,7 +712,7 @@ namespace Nutcrackz {
 		return true;
 	}
 
-	bool VideoTexture::AudioReaderSeekFrame(VideoReaderState* state, int64_t ts, bool resetAudio)
+	bool VideoTexture::AudioReaderSeekFrame(VideoReaderState* state, double ts, bool resetAudio)
 	{
 		NZ_PROFILE_FUNCTION("VideoTexture::AudioReaderSeekFrame");
 
@@ -709,166 +720,111 @@ namespace Nutcrackz {
 		auto& audioFormatContext = state->AudioFormatContext;
 		auto& audioCodecContext = state->AudioCodecContext;
 		auto& audioStreamIndex = state->AudioStreamIndex;
-		auto& audioPacket = state->AudioPacket;
 		auto& audioFrame = state->AudioFrame;
 		auto& audioStream = state->AudioStream;
 		auto& timeBase = state->TimeBase;
 
-		int64_t pts = av_rescale_q(ts, timeBase, audioStream->time_base);
-		av_seek_frame(audioFormatContext, audioStreamIndex, pts, AVSEEK_FLAG_BACKWARD);
-
-		avcodec_flush_buffers(audioCodecContext);
-
-		// av_seek_frame takes effect after one frame, so I'm decoding one here
-		// so that the next call to video_reader_read_frame() will give the correct frame
-		int response;
 		if (audioFormatContext != nullptr)
 		{
-			while (av_read_frame(audioFormatContext, audioPacket) >= 0)
+			if (ts < 0.0)
+				ts = 0.0;
+
+			int64_t target_ts = int64_t(AV_TIME_BASE * ts);
+
+			if (avformat_seek_file(audioFormatContext, -1, INT64_MIN, target_ts, INT64_MAX, 0) < 0)
 			{
-				if (audioPacket->stream_index != audioStreamIndex)
-				{
-					av_packet_unref(audioPacket);
-					continue;
-				}
-
-				response = avcodec_send_packet(audioCodecContext, audioPacket);
-				if (response < 0)
-				{
-					NZ_CORE_ERROR("Failed to decode audio packet: {0}!", Utils::GetAVError(response));
-					return false;
-				}
-
-				response = avcodec_receive_frame(audioCodecContext, audioFrame);
-
-				if (response == AVERROR(EAGAIN) || response == AVERROR_EOF)
-				{
-					av_packet_unref(audioPacket);
-					continue;
-				}
-				else if (response < 0)
-				{
-					NZ_CORE_ERROR("Failed to decode audio packet: {0}!", Utils::GetAVError(response));
-					return false;
-				}
-
-				av_packet_unref(audioPacket);
-				break;
+				NZ_CORE_ERROR("Failed to seek video!");
+				return false;
 			}
 
-			if (resetAudio && !m_InitializedAudio)
-				m_InitializedAudio = true;
+			audioFrame->pts = target_ts;
 		}
 
 		return true;
 	}
 
-	bool VideoTexture::AVReaderSeekFrame(VideoReaderState* state, int64_t ts, bool resetAudio)
+	bool VideoTexture::AVReaderOpen(VideoReaderState* state, const std::filesystem::path& filepath)
+	{
+		// Unpack members of state
+		auto& width = state->Width;
+		auto& height = state->Height;
+		auto& avFormatContext = state->AudioVideoFormatContext;
+		auto& avCodecContext = state->AudioVideoCodecContext;
+		auto& avStreamIndex = state->AudioVideoStreamIndex;
+		auto& avFrame = state->AudioVideoFrame;
+		auto& avPacket = state->AudioVideoPacket;
+		auto& avStream = state->AudioVideoStream;
+		auto& timeBase = state->TimeBase;
+
+		return true;
+	}
+
+	bool VideoTexture::AVReaderReadFrame(VideoReaderState* state, uint8_t* frameBuffer, int64_t* pts, bool isPaused, double ts)
+	{
+		//NZ_PROFILE_FUNCTION("VideoTexture::AudioReaderReadFrame");
+
+		// Unpack members of state
+		auto& width = state->Width;
+		auto& height = state->Height;
+		auto& avFormatContext = state->AudioVideoFormatContext;
+		auto& avCodecContext = state->AudioVideoCodecContext;
+		auto& avStreamIndex = state->AudioVideoStreamIndex;
+		auto& avFrame = state->AudioVideoFrame;
+		auto& avPacket = state->AudioVideoPacket;
+		auto& avStream = state->AudioVideoStream;
+		auto& avFifo = state->AudioVideoFifo;
+		auto& timeBase = state->TimeBase;		
+
+		return true;
+	}
+
+	bool VideoTexture::AVReaderSeekFrame(VideoReaderState* state, double ts, bool resetAudio)
 	{
 		NZ_PROFILE_FUNCTION("VideoTexture::AVReaderSeekFrame");
 
 		// Unpack video members of state
 		auto& videoFormatContext = state->VideoFormatContext;
-		auto& videoCodecContext = state->VideoCodecContext;
-		auto& videoStreamIndex = state->VideoStreamIndex;
-		auto& videoPacket = state->VideoPacket;
 		auto& videoFrame = state->VideoFrame;
-		auto& videoStream = state->VideoStream;
-
-		// Unpack members of state
 		auto& audioFormatContext = state->AudioFormatContext;
-		auto& audioCodecContext = state->AudioCodecContext;
-		auto& audioStreamIndex = state->AudioStreamIndex;
-		auto& audioPacket = state->AudioPacket;
 		auto& audioFrame = state->AudioFrame;
-		auto& audioStream = state->AudioStream;
-		auto& timeBase = state->TimeBase;
 
-		int64_t videoPts = av_rescale_q(ts, timeBase, videoStream->time_base);
-		av_seek_frame(videoFormatContext, videoStreamIndex, videoPts, AVSEEK_FLAG_BACKWARD);
-
-		avcodec_flush_buffers(videoCodecContext);
-
-		// av_seek_frame takes effect after one frame, so I'm decoding one here
-		// so that the next call to video_reader_read_frame() will give the correct frame
-		int response;
 		if (videoFormatContext != nullptr)
 		{
-			while (av_read_frame(videoFormatContext, videoPacket) >= 0)
+			/*if (ts < 0.0)
+				ts = 0.0;
+
+			int64_t target_ts = int64_t(AV_TIME_BASE * ts);
+
+			if (avformat_seek_file(avFormatContext, -1, INT64_MIN, target_ts, INT64_MAX, 0) < 0)
 			{
-				if (videoPacket->stream_index != videoStreamIndex)
-				{
-					av_packet_unref(videoPacket);
-					continue;
-				}
-
-				response = avcodec_send_packet(videoCodecContext, videoPacket);
-				if (response < 0)
-				{
-					NZ_CORE_ERROR("Failed to decode video packet: {0}!", Utils::GetAVError(response));
-					return false;
-				}
-
-				response = avcodec_receive_frame(videoCodecContext, videoFrame);
-				if (response == AVERROR(EAGAIN) || response == AVERROR_EOF)
-				{
-					av_packet_unref(videoPacket);
-					continue;
-				}
-				else if (response < 0)
-				{
-					NZ_CORE_ERROR("Failed to decode video packet: {0}!", Utils::GetAVError(response));
-					return false;
-				}
-
-				av_packet_unref(videoPacket);
-				break;
+				NZ_CORE_ERROR("Failed to seek video!");
+				return false;
 			}
+
+			avFrame->pts = target_ts;*/
+
+			int64_t target_ts = int64_t(AV_TIME_BASE * ts);
+
+			if (avformat_seek_file(videoFormatContext, -1, INT64_MIN, target_ts, INT64_MAX, 0) < 0)
+			{
+				NZ_CORE_ERROR("Failed to seek video!");
+				return false;
+			}
+
+			videoFrame->pts = target_ts;
 		}
 
-		int64_t audioPts = av_rescale_q(ts, timeBase, audioStream->time_base);
-		av_seek_frame(audioFormatContext, audioStreamIndex, audioPts, AVSEEK_FLAG_BACKWARD);
-
-		avcodec_flush_buffers(audioCodecContext);
-
-		// av_seek_frame takes effect after one frame, so I'm decoding one here
-		// so that the next call to video_reader_read_frame() will give the correct frame
 		if (audioFormatContext != nullptr)
 		{
-			while (av_read_frame(audioFormatContext, audioPacket) >= 0)
+			int64_t target_ts = int64_t(AV_TIME_BASE * ts);
+
+			if (avformat_seek_file(audioFormatContext, -1, INT64_MIN, target_ts, INT64_MAX, 0) < 0)
 			{
-				if (audioPacket->stream_index != audioStreamIndex)
-				{
-					av_packet_unref(audioPacket);
-					continue;
-				}
-
-				response = avcodec_send_packet(audioCodecContext, audioPacket);
-				if (response < 0)
-				{
-					NZ_CORE_ERROR("Failed to decode audio packet: {0}!", Utils::GetAVError(response));
-					return false;
-				}
-
-				response = avcodec_receive_frame(audioCodecContext, audioFrame);
-
-				if (response == AVERROR(EAGAIN) || response == AVERROR_EOF)
-				{
-					av_packet_unref(audioPacket);
-					continue;
-				}
-				else if (response < 0)
-				{
-					NZ_CORE_ERROR("Failed to decode audio packet: {0}!", Utils::GetAVError(response));
-					return false;
-				}
-
-				av_packet_unref(audioPacket);
-				break;
+				NZ_CORE_ERROR("Failed to seek video!");
+				return false;
 			}
 
-			if (resetAudio && !m_InitializedAudio)
-				m_InitializedAudio = true;
+			audioFrame->pts = target_ts;
 		}
 
 		return true;
@@ -959,7 +915,7 @@ namespace Nutcrackz {
 		}
 	}
 
-	void VideoTexture::ReadAndPlayAudio(VideoReaderState* state, int64_t ts, bool seek, bool isPaused, const std::filesystem::path& filepath)
+	void VideoTexture::ReadAndPlayAudio(VideoReaderState* state, int64_t* pts, double ts, bool& seek, bool isPaused, const std::filesystem::path& filepath)
 	{
 		NZ_PROFILE_FUNCTION("VideoTexture::ReadAndPlayAudio");
 
@@ -981,14 +937,14 @@ namespace Nutcrackz {
 			{
 				if (!AudioReaderSeekFrame(&m_VideoState, ts))
 				{
-					NZ_CORE_WARN("Could not seek the audio back to start frame!");
+					NZ_CORE_WARN("Could not seek the audio to frame!");
 					return;
 				}
 
 				seek = false;
 			}
 
-			if (!AudioReaderReadFrame(&m_VideoState, isPaused))
+			if (!AudioReaderReadFrame(&m_VideoState, isPaused, ts))
 			{
 				NZ_CORE_WARN("Couldn't load audio frame!");
 				return;
@@ -1021,7 +977,7 @@ namespace Nutcrackz {
 		glTextureSubImage2D(m_RendererID, 0, 0, 0, m_Width, m_Height, GL_RGBA, GL_UNSIGNED_BYTE, data.Data);
 	}
 
-	void VideoTexture::Bind(uint32_t slot, bool isPlayingVideo)
+	void VideoTexture::Bind(uint32_t slot)
 	{
 		//NZ_PROFILE_FUNCTION();
 

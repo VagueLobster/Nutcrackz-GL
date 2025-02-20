@@ -395,8 +395,8 @@ namespace Nutcrackz {
 		void VideoRendererComponent_SetSaturation(uint64_t entityID, float saturation);
 		bool VideoRendererComponent_GetUseBillboard(uint64_t entityID);
 		void VideoRendererComponent_SetUseBillboard(uint64_t entityID, bool useBillboard);
-		bool VideoRendererComponent_GetUseExternalAudio(uint64_t entityID);
-		void VideoRendererComponent_SetUseExternalAudio(uint64_t entityID, bool useExternalAudio);
+		//bool VideoRendererComponent_GetUseExternalAudio(uint64_t entityID);
+		//void VideoRendererComponent_SetUseExternalAudio(uint64_t entityID, bool useExternalAudio);
 		bool VideoRendererComponent_GetPlayVideo(uint64_t entityID);
 		void VideoRendererComponent_SetPlayVideo(uint64_t entityID, bool playVideo);
 		bool VideoRendererComponent_GetRepeatVideo(uint64_t entityID);

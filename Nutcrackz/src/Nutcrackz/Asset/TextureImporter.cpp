@@ -68,12 +68,12 @@ namespace Nutcrackz {
 
 			if (!VideoTexture::VideoReaderOpen(&videoState, filepath))
 			{
-				NZ_CORE_ERROR("TextureImporter::ImportVideoTexture - Could not video from filepath: {}", filepath.string());
+				NZ_CORE_ERROR("TextureImporter::ImportVideoTexture - Could not open video from filepath: {}", filepath.string());
 				return nullptr;
 			}
 
 			if (!VideoTexture::AudioReaderOpen(&videoState, filepath))
-				NZ_CORE_ERROR("TextureImporter::ImportVideoTexture - Could not audio in video from filepath: {}", filepath.string());
+				NZ_CORE_ERROR("TextureImporter::ImportVideoTexture - Could not open audio in video from filepath: {}", filepath.string());
 		}
 
 		TextureSpecification spec;

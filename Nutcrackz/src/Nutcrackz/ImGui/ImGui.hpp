@@ -533,7 +533,7 @@ namespace Nutcrackz::UI {
 		return modified;
 	}
 
-	static bool Property(const char* label, int64_t& value, int64_t delta, int min, int max)
+	static bool Property(const char* label, int64_t& value, int64_t delta, int min, int max, bool readOnly = false)
 	{
 		bool modified = false;
 
@@ -543,7 +543,51 @@ namespace Nutcrackz::UI {
 
 		s_Label = "##" + std::to_string(s_Counter++);
 
-		if (ImGui::DragInt(s_Label.c_str(), reinterpret_cast<int*>(&value), (float)delta, min, max))
+		ImGuiSliderFlags flags = 0;
+		
+		if (readOnly)
+			flags |= ImGuiSliderFlags_ReadOnly;
+
+		if (ImGui::DragInt(s_Label.c_str(), reinterpret_cast<int*>(&value), (float)delta, min, max, "%d", flags))
+			modified = true;
+
+		ImGui::PopItemWidth();
+		ImGui::NextColumn();
+
+		return modified;
+	}
+
+	static bool Property(const char* label, int64_t& value1, int64_t& value2, int64_t& value3, int64_t& value4, int64_t delta, int minValue, int maxValue1, int maxValue2, int maxValue3, int maxValue4, bool readOnly = false)
+	{
+		bool modified = false;
+
+		ImGui::Text(label);
+		ImGui::NextColumn();
+		ImGui::PushItemWidth(-1);
+
+		s_Label = "##" + std::to_string(s_Counter++);
+
+		ImGuiSliderFlags flags = 0;
+
+		if (readOnly)
+			flags |= ImGuiSliderFlags_ReadOnly;
+
+		if (ImGui::DragInt(s_Label.c_str(), reinterpret_cast<int*>(&value1), (float)delta, minValue, maxValue1, "%d", flags))
+			modified = true;
+
+		ImGui::SameLine();
+
+		if (ImGui::DragInt(s_Label.c_str(), reinterpret_cast<int*>(&value2), (float)delta, minValue, maxValue2, "%d", flags))
+			modified = true;
+
+		ImGui::SameLine();
+
+		if (ImGui::DragInt(s_Label.c_str(), reinterpret_cast<int*>(&value3), (float)delta, minValue, maxValue3, "%d", flags))
+			modified = true;
+
+		ImGui::SameLine();
+
+		if (ImGui::DragInt(s_Label.c_str(), reinterpret_cast<int*>(&value3), (float)delta, minValue, maxValue4, "%d", flags))
 			modified = true;
 
 		ImGui::PopItemWidth();
@@ -1223,7 +1267,7 @@ namespace Nutcrackz::UI {
 		return modified;
 	}
 
-	static bool Property(const char* label, double& value, float delta = 0.1f, float min = 0.0f, float max = 0.0f, bool readOnly = false)
+	/*static bool Property(const char* label, double& value, float delta = 0.1f, float min = 0.0f, float max = 0.0f, bool readOnly = false)
 	{
 		bool modified = false;
 
@@ -1242,6 +1286,33 @@ namespace Nutcrackz::UI {
 		{
 			ImGui::InputFloat(s_Label.c_str(), reinterpret_cast<float*>(&value), 0.0F, 0.0F, "%.6f", ImGuiInputTextFlags_ReadOnly);
 		}
+
+		ImGui::PopItemWidth();
+		ImGui::NextColumn();
+
+		return modified;
+	}*/
+
+	static bool Property(const char* label, double& value, double delta = 0.1, double min = 0.0, double max = 0.0, bool readOnly = false, bool noInput = false)
+	{
+		bool modified = false;
+
+		ImGui::Text(label);
+		ImGui::NextColumn();
+		ImGui::PushItemWidth(-1);
+
+		s_Label = "##" + std::to_string(s_Counter++);
+
+		ImGuiSliderFlags flags = 0;
+
+		if (readOnly)
+			flags |= ImGuiSliderFlags_ReadOnly;
+
+		if (noInput)
+			flags |= ImGuiSliderFlags_NoInput;
+
+		if (ImGui::DragFloat(s_Label.c_str(), reinterpret_cast<float*>(&value), static_cast<float>(delta), static_cast<float>(min), static_cast<float>(max), "%.3f", flags))
+			modified = true;
 
 		ImGui::PopItemWidth();
 		ImGui::NextColumn();

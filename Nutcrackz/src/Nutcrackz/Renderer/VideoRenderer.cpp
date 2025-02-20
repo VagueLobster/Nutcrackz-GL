@@ -65,7 +65,6 @@ namespace Nutcrackz {
 		RefPtr<UniformBuffer> CameraUniformBuffer;
 
 		bool UseBillboard = false;
-		bool IsPlayingVideo = false;
 	};
 
 	static VideoRendererData s_VideoData;
@@ -173,7 +172,7 @@ namespace Nutcrackz {
 			for (uint32_t i = 0; i < s_VideoData.VideoTextureSlotIndex; i++)
 			{
 				if (s_VideoData.VideoTextureSlots[i])
-					s_VideoData.VideoTextureSlots[i]->Bind(i, s_VideoData.IsPlayingVideo);
+					s_VideoData.VideoTextureSlots[i]->Bind(i);
 			}
 
 			s_VideoData.VideoShader->Bind();
@@ -263,7 +262,7 @@ namespace Nutcrackz {
 
 #pragma endregion
 
-	void VideoRenderer::RenderVideo(TransformComponent& transform, VideoRendererComponent& src/*, VideoData& data*/, int entityID)
+	void VideoRenderer::RenderVideo(TransformComponent& transform, VideoRendererComponent& src/*, VideoData& data*/, Timestep ts, int entityID)
 	{
 		if (src.Video != 0)
 		{
@@ -271,10 +270,8 @@ namespace Nutcrackz {
 				src.Texture = AssetManager::GetAsset<VideoTexture>(src.Video);
 		}
 
-		//if (src.Video)
-		//{
-		//	NZ_CORE_VERIFY(src.Texture);
-		//}
+		if (src.m_VideoData.CurrentTime != 0.0)
+			src.m_VideoData.CurrentTime = 0.0;
 
 		if (!src.m_VideoData.HasInitializedTimer)
 		{
@@ -288,135 +285,384 @@ namespace Nutcrackz {
 		int textureIndex = 0;
 		const rtmcpp::Vec2 tilingFactor(1.0f, 1.0f);
 
-		// This if statement is very much required!
-		// Without it, this function creates a big memory leak!
 		if (src.m_VideoData.VideoRendererID)
-			src.Texture->DeleteRendererID(src.m_VideoData.VideoRendererID);
+			src.Texture->DeleteRendererID(src.m_VideoData.VideoRendererID); // We need to delete the renderID at the start of each frame, otherwise the video leaks memory!
 
 		if (src.Texture)
 		{
-			if (!src.m_VideoData.UseExternalAudio)
-				{
-					src.Texture->SetVolumeFactor(src.m_VideoData.Volume);
-					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), src.m_VideoData.FramePosition, src.m_VideoData.SeekAudio, src.m_VideoData.PauseVideo, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
-				}
+			double hoursToMilliseconds = (double)src.m_VideoData.SetHours;
 
-				if (!src.m_VideoData.IsRenderingVideo)
-				{
-					SetTime(0.0);
-					src.m_VideoData.IsRenderingVideo = true;
-				}
+			if (hoursToMilliseconds > 0)
+				hoursToMilliseconds = (double)src.m_VideoData.SetHours * 60.0 * 60.0;
 
-				if (src.m_VideoData.FramePosition != 0)
-				{
-					SetTime(src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate);
+			double minutesToMilliseconds = (double)src.m_VideoData.SetMinutes;
 
-					if (!src.Texture->VideoReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.FramePosition))
-					{
-						NZ_CORE_WARN("Could not seek video back to start frame!");
-						return;
-					}
+			if (minutesToMilliseconds > 0)
+				minutesToMilliseconds = (double)src.m_VideoData.SetMinutes * 60.0;
 
-					src.m_VideoData.PresentationTimeStamp = src.m_VideoData.FramePosition;
-					src.m_VideoData.FramePosition = 0;
-				}
+			double secondsToMilliseconds = (double)src.m_VideoData.SetSeconds;
 
-				src.m_VideoData.VideoRendererID = src.Texture->GetIDFromTexture(src.m_VideoData.VideoFrameData, &src.m_VideoData.PresentationTimeStamp, src.m_VideoData.PauseVideo, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+			//if (secondsToMilliseconds > 0)
+			//	secondsToMilliseconds = (double)src.m_VideoData.SetSeconds * 1000.0;
+
+			double videoTimeStep = hoursToMilliseconds + minutesToMilliseconds + secondsToMilliseconds + ((double)src.m_VideoData.SetMilliseconds / 1000.0);
+
+			//NZ_CORE_TRACE("Video time step: {}", videoTimeStep);
+
+			if (!src.m_VideoData.SeekToFrame)
+			{
+/*#ifdef NZ_DEBUG
+				if (src.Texture->GetVideoState().Framerate >= 23.976 && src.Texture->GetVideoState().Framerate <= 23.976023976023978)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 7.5f));
+				else if (src.Texture->GetVideoState().Framerate == 24.0)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 6.0f));
+				else if (src.Texture->GetVideoState().Framerate == 25.0)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.125f));
+				else if (src.Texture->GetVideoState().Framerate >= 29.97 && src.Texture->GetVideoState().Framerate <= 29.97002997002997)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 1.875f));
+				else if (src.Texture->GetVideoState().Framerate == 30.0)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 1.875f));
+				else if (src.Texture->GetVideoState().Framerate == 50.0)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 6.25f));
+				else if (src.Texture->GetVideoState().Framerate >= 59.94 && src.Texture->GetVideoState().Framerate <= 59.94005994005994)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.75f));
+#else
+				if (src.Texture->GetVideoState().Framerate >= 23.976 && src.Texture->GetVideoState().Framerate <= 23.976023976023978)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 15.0f));
+				else if (src.Texture->GetVideoState().Framerate == 24.0)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 12.0f));
+				else if (src.Texture->GetVideoState().Framerate == 25.0)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 6.25f));
+				else if (src.Texture->GetVideoState().Framerate >= 29.97 && src.Texture->GetVideoState().Framerate <= 29.97002997002997)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.75f));
+				else if (src.Texture->GetVideoState().Framerate == 30.0)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.75f));
+				else if (src.Texture->GetVideoState().Framerate == 50.0)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 12.5f));
+				else if (src.Texture->GetVideoState().Framerate >= 59.94 && src.Texture->GetVideoState().Framerate <= 59.94005994005994)
+					SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 7.5f));
+#endif*/
+				//SetTime(((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate));
+
+				src.m_VideoData.VideoRendererID = src.Texture->GetIDFromTexture(src.m_VideoData.VideoFrameData, &src.m_VideoData.PresentationTimeStamp, src.m_VideoData.SeekVideo, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video), videoTimeStep, src.m_VideoData.CurrentPlayTimeInMilliseconds);
 				src.Texture->SetRendererID(src.m_VideoData.VideoRendererID);
 
-				if (src.m_VideoData.PauseVideo)
+				src.m_VideoData.PresentationTimeInSeconds = src.m_VideoData.PresentationTimeStamp * ((double)src.Texture->GetVideoState().TimeBase.num / (double)src.Texture->GetVideoState().TimeBase.den);
+
+				if (videoTimeStep > 0.0)
+					SetTime(src.m_VideoData.PresentationTimeInSeconds);
+				else
+					SetTime(0.0);
+
+				src.Texture->DeleteRendererID(src.m_VideoData.VideoRendererID);
+				//NZ_CORE_WARN("Position in time: {}", src.m_VideoData.PresentationTimeInSeconds);
+				//NZ_CORE_WARN("GetTime: {}", GetTime());
+
+				src.m_VideoData.SeekToFrame = true;
+			}
+
+			//if (!src.m_VideoData.UseExternalAudio)
+			{
+				src.Texture->SetVolumeFactor(src.m_VideoData.Volume);
+
+/*#ifdef NZ_DEBUG
+				if (src.Texture->GetVideoState().Framerate >= 23.976 && src.Texture->GetVideoState().Framerate <= 23.976023976023978)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 15.0f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate == 24.0)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 12.0f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate == 25.0)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 6.25f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate >= 29.97 && src.Texture->GetVideoState().Framerate <= 29.97002997002997)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.75f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate == 30.0)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.75f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate == 50.0)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 12.5f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate >= 59.94 && src.Texture->GetVideoState().Framerate <= 59.94005994005994)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 7.5f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+#else
+				if (src.Texture->GetVideoState().Framerate >= 23.976 && src.Texture->GetVideoState().Framerate <= 23.976023976023978)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 30.0f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate == 24.0)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 24.0f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate == 25.0)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 12.5f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate >= 29.97 && src.Texture->GetVideoState().Framerate <= 29.97002997002997)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 7.5f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate == 30.0)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 7.5f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate == 50.0)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 25.0f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				else if (src.Texture->GetVideoState().Framerate >= 59.94 && src.Texture->GetVideoState().Framerate <= 59.94005994005994)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 15.0f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+#endif*/
+				if (src.Texture->GetVideoState().Framerate >= 23.976 && src.Texture->GetVideoState().Framerate <= 23.976023976023978)
 				{
-					if (!src.m_VideoData.UseExternalAudio)
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep + (50.0 / src.Texture->GetVideoState().Framerate)), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				}
+				else if (src.Texture->GetVideoState().Framerate == 24.0)
+				{
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, videoTimeStep, src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				}
+				else if (src.Texture->GetVideoState().Framerate == 25.0)
+				{
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep + (25.0 / src.Texture->GetVideoState().Framerate)), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				}
+				/*else if (src.Texture->GetVideoState().Framerate >= 29.97 && src.Texture->GetVideoState().Framerate <= 29.97002997002997)
+				{
+					if (videoTimeStep == 0.0)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep + (src.Texture->GetVideoState().Framerate / src.Texture->GetVideoState().Framerate)), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep + (double)(ts * 10.0f)), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+
+				}*/
+				/*else if (src.Texture->GetVideoState().Framerate == 30.0)
+				{
+					// Not implemented yet, since i have no 30 fps videos to test with!
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep + (62.5 / src.Texture->GetVideoState().Framerate)), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				}*/
+				else if (src.Texture->GetVideoState().Framerate == 50.0)
+				{
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep + (50.0 / src.Texture->GetVideoState().Framerate)), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				}
+				/*else if (src.Texture->GetVideoState().Framerate >= 59.94 && src.Texture->GetVideoState().Framerate <= 59.94005994005994)
+				{
+					if (videoTimeStep == 0.0)
 					{
-						if (!src.Texture->AVReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.PresentationTimeStamp))
-						{
-							NZ_CORE_WARN("Could not seek a/v back to start frame!");
-							return;
-						}
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, videoTimeStep + 2.0, src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
 					}
 					else
 					{
-						if (!src.Texture->VideoReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.PresentationTimeStamp))
+						//0,15179515625
+						//0,151784375
+						//0.152 Audio ahead
+						//0.152015625 Audio ahead
+						//0,153596403596401
+						//0,003746253746253
+						//0,157342657342654
+						//0,007492507492507
+						//0,164835164835161
+						//0,014985014985014
+						//0,149850149850147 Audio too far behind
+						//0,179820179820177 Audio too far ahead
+						//0,119880119880118 Audio too far behind
+						//0,089910089910088 Audio too far behind
+						//0,059940059940059 Audio too far behind
+						//0,029970029970029 Audio too far behind
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep + 0.15185), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+						//src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep + 0.029970029970029), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+						//src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep - 0.029970029970029), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+						//src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, videoTimeStep, src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					}
+				}*/
+				/*else if (src.Texture->GetVideoState().Framerate == 60.0)
+				{
+					// Not implemented yet, since i have no 30 fps videos to test with!
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, (videoTimeStep + (50.0 / src.Texture->GetVideoState().Framerate)), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+				}*/
+			}
+
+			//src.m_VideoData.VideoRendererID = src.Texture->GetIDFromTexture(src.m_VideoData.VideoFrameData, &src.m_VideoData.PresentationTimeStamp, src.m_VideoData.SeekVideo, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video), ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate));
+			src.m_VideoData.VideoRendererID = src.Texture->GetIDFromTexture(src.m_VideoData.VideoFrameData, &src.m_VideoData.PresentationTimeStamp, src.m_VideoData.SeekVideo, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video), videoTimeStep, src.m_VideoData.CurrentPlayTimeInMilliseconds);
+			src.Texture->SetRendererID(src.m_VideoData.VideoRendererID);
+
+			if (src.m_VideoData.PresentationTimeInSeconds != src.m_VideoData.PresentationTimeStamp * ((double)src.Texture->GetVideoState().TimeBase.num / (double)src.Texture->GetVideoState().TimeBase.den)/* && !src.m_VideoData.VideoPaused*/)
+			{
+				if (src.m_VideoData.RestartVideoFromTimeInSeconds == 0)
+					src.m_VideoData.RestartVideoFromTimeInSeconds = videoTimeStep;
+					//src.m_VideoData.RestartVideoFromTimeInSeconds = src.m_VideoData.PresentationTimeStamp * ((double)src.Texture->GetVideoState().TimeBase.num / (double)src.Texture->GetVideoState().TimeBase.den);
+
+				src.m_VideoData.PresentationTimeInSeconds = src.m_VideoData.PresentationTimeStamp * ((double)src.Texture->GetVideoState().TimeBase.num / (double)src.Texture->GetVideoState().TimeBase.den);
+			}
+
+			if (src.m_VideoData.VideoPaused)
+			{
+				//if (!src.m_VideoData.UseExternalAudio)
+				{
+					//if (!src.Texture->AudioReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.PresentationTimeInSeconds))
+					//{
+					//	NZ_CORE_WARN("Could not seek video to frame!");
+					//	return;
+					//}
+
+					if (!src.Texture->AVReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.PresentationTimeInSeconds))
+					{
+						NZ_CORE_WARN("Could not seek audio/video to frame!");
+						return;
+					}
+				}
+				//else
+				//{
+				//	if (!src.Texture->AudioReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.PresentationTimeInSeconds))
+				//	{
+				//		NZ_CORE_WARN("Could not seek video to frame!");
+				//		return;
+				//	}
+				//
+				//	if (!src.Texture->VideoReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.PresentationTimeInSeconds))
+				//	{
+				//		NZ_CORE_WARN("Could not seek video to frame!");
+				//		return;
+				//	}
+				//}
+
+				SetTime(src.m_VideoData.PresentationTimeInSeconds);
+			}
+			else if (!src.m_VideoData.VideoPaused)
+			{
+				int hoursToSeconds = src.Texture->GetVideoState().Hours * 3600;
+				int minutesToSeconds = src.Texture->GetVideoState().Mins * 60;
+
+				if (src.m_VideoData.VideoDuration != hoursToSeconds + minutesToSeconds + src.Texture->GetVideoState().Secs + (0.01 * ((100 * src.Texture->GetVideoState().Us) / AV_TIME_BASE)))
+					src.m_VideoData.VideoDuration = hoursToSeconds + minutesToSeconds + src.Texture->GetVideoState().Secs + (0.01 * ((100 * src.Texture->GetVideoState().Us) / AV_TIME_BASE));
+
+				if (src.m_VideoData.Hours != src.Texture->GetVideoState().Hours)
+					src.m_VideoData.Hours = src.Texture->GetVideoState().Hours;
+
+				if (src.m_VideoData.Minutes != src.Texture->GetVideoState().Mins)
+					src.m_VideoData.Minutes = src.Texture->GetVideoState().Mins;
+
+				if (src.m_VideoData.Seconds != src.Texture->GetVideoState().Secs)
+					src.m_VideoData.Seconds = src.Texture->GetVideoState().Secs;
+
+				if (src.m_VideoData.Milliseconds != src.Texture->GetVideoState().Us)
+					src.m_VideoData.Milliseconds = src.Texture->GetVideoState().Us;
+
+				//std::async([=]() mutable
+				//{
+					while (src.m_VideoData.PresentationTimeInSeconds > GetTime())
+					{
+						std::this_thread::sleep_for(std::chrono::seconds((long long)(src.m_VideoData.PresentationTimeInSeconds - GetTime())));
+						//Sleep(data.PresentationTimeInSeconds - GetTime());
+					}
+				//});
+
+				if (src.m_VideoData.RepeatVideo && GetTime() >= src.m_VideoData.VideoDuration)
+				{
+					//if (!src.m_VideoData.UseExternalAudio)
+					{
+						if (!src.Texture->AVReaderSeekFrame(&src.Texture->GetVideoState(), 0, true))
 						{
-							NZ_CORE_WARN("Could not seek video back to start frame!");
+							NZ_CORE_WARN("Could not seek audio/video back to start frame!");
 							return;
 						}
+					
+						src.Texture->CloseAudio(&src.Texture->GetVideoState());
 					}
+					//else
+					//{
+					//	if (!src.Texture->AudioReaderSeekFrame(&src.Texture->GetVideoState(), 0, true))
+					//	{
+					//		NZ_CORE_WARN("Could not seek video back to start frame!");
+					//		return;
+					//	}
+					//
+					//	src.Texture->CloseAudio(&src.Texture->GetVideoState());
+					//
+					//	if (!src.Texture->VideoReaderSeekFrame(&src.Texture->GetVideoState(), 0))
+					//	{
+					//		NZ_CORE_WARN("Could not seek video back to start frame!");
+					//		return;
+					//	}
+					//}
+
+					src.m_VideoData.SeekToFrame = true;
+					src.m_VideoData.SeekVideo = false;
+					src.m_VideoData.SeekAudio = false;
+					src.m_VideoData.IsPlayingAudio = true;
+					src.m_VideoData.PresentationTimeStamp = 0;
+
+					bool seekAudio = true;
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, 0, seekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+
+					src.Texture->DeleteRendererID(src.m_VideoData.VideoRendererID);
+					src.Texture->CloseVideo(&src.Texture->GetVideoState());
+
+					std::filesystem::path filepath = Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video);
+					src.m_VideoData.VideoRendererID = src.Texture->GetIDFromTexture(src.m_VideoData.VideoFrameData, &src.m_VideoData.PresentationTimeStamp, src.m_VideoData.SeekVideo, src.m_VideoData.VideoPaused, filepath, 0, src.m_VideoData.CurrentPlayTimeInMilliseconds);
+
+					src.Texture->SetRendererID(src.m_VideoData.VideoRendererID);
 
 					SetTime(0.0);
 				}
-				else if (!src.m_VideoData.PauseVideo)
+				else if (src.m_VideoData.RepeatVideoFromFramePosition && GetTime() >= src.m_VideoData.VideoDuration)
 				{
-					if (src.m_VideoData.RestartPointFromPause > GetTime())
-						SetTime(src.m_VideoData.RestartPointFromPause);
-
-					if (src.m_VideoData.RestartPointFromPause < GetTime())
-						src.m_VideoData.RestartPointFromPause = GetTime();
-
-					int hoursToSeconds = src.Texture->GetVideoState().Hours * 3600;
-					int minutesToSeconds = src.Texture->GetVideoState().Mins * 60;
-
-					if (src.m_VideoData.VideoDuration != hoursToSeconds + minutesToSeconds + src.Texture->GetVideoState().Secs + (0.01 * ((100 * src.Texture->GetVideoState().Us) / AV_TIME_BASE)))
-						src.m_VideoData.VideoDuration = hoursToSeconds + minutesToSeconds + src.Texture->GetVideoState().Secs + (0.01 * ((100 * src.Texture->GetVideoState().Us) / AV_TIME_BASE));
-
-					if (src.m_VideoData.Hours != src.Texture->GetVideoState().Hours)
-						src.m_VideoData.Hours = src.Texture->GetVideoState().Hours;
-
-					if (src.m_VideoData.Minutes != src.Texture->GetVideoState().Mins)
-						src.m_VideoData.Minutes = src.Texture->GetVideoState().Mins;
-
-					if (src.m_VideoData.Seconds != src.Texture->GetVideoState().Secs)
-						src.m_VideoData.Seconds = src.Texture->GetVideoState().Secs;
-
-					if (src.m_VideoData.Milliseconds != src.Texture->GetVideoState().Us)
-						src.m_VideoData.Milliseconds = src.Texture->GetVideoState().Us;
-
-					src.m_VideoData.PresentationTimeInSeconds = src.m_VideoData.PresentationTimeStamp * ((double)src.Texture->GetVideoState().TimeBase.num / (double)src.Texture->GetVideoState().TimeBase.den);
-
-					//std::async([=]() mutable
-					//{
-						while (src.m_VideoData.PresentationTimeInSeconds > GetTime())
-						{
-							std::this_thread::sleep_for(std::chrono::seconds((long long)(src.m_VideoData.PresentationTimeInSeconds - GetTime())));
-							//Sleep(data.PresentationTimeInSeconds - GetTime());
-						}
-					//});
-
-					if (src.m_VideoData.RepeatVideo && GetTime() >= src.m_VideoData.VideoDuration)
+					//if (!src.m_VideoData.UseExternalAudio)
 					{
-						if (!src.m_VideoData.UseExternalAudio)
+						if (!src.Texture->AVReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.RestartVideoFromTimeInSeconds, true))
 						{
-							if (!src.Texture->AVReaderSeekFrame(&src.Texture->GetVideoState(), 0, true))
-							{
-								NZ_CORE_WARN("Could not seek audio/video back to start frame!");
-								return;
-							}
-
-							src.Texture->CloseAudio(&src.Texture->GetVideoState());
+							NZ_CORE_WARN("Could not seek audio/video to frame!");
+							return;
 						}
-						else
-						{
-							if (!src.Texture->VideoReaderSeekFrame(&src.Texture->GetVideoState(), 0))
-							{
-								NZ_CORE_WARN("Could not seek video back to start frame!");
-								return;
-							}
-						}
-
-						src.m_VideoData.SeekAudio = true;
-						src.Texture->DeleteRendererID(src.m_VideoData.VideoRendererID);
-						src.Texture->CloseVideo(&src.Texture->GetVideoState());
-
-						std::filesystem::path filepath = Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video);
-						src.m_VideoData.VideoRendererID = src.Texture->GetIDFromTexture(src.m_VideoData.VideoFrameData, &src.m_VideoData.PresentationTimeStamp, src.m_VideoData.PauseVideo, filepath);
-
-						src.Texture->SetRendererID(src.m_VideoData.VideoRendererID);
-
-						src.m_VideoData.PresentationTimeStamp = 0;
-						SetTime(0.0);
-						src.m_VideoData.RestartPointFromPause = 0.0;
+					
+						src.Texture->CloseAudio(&src.Texture->GetVideoState());
 					}
+					//else
+					//{
+					//	if (!src.Texture->AudioReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.RestartVideoFromTimeInSeconds, true))
+					//	{
+					//		NZ_CORE_WARN("Could not seek video to frame!");
+					//		return;
+					//	}
+					//
+					//	src.Texture->CloseAudio(&src.Texture->GetVideoState());
+					//
+					//	if (!src.Texture->VideoReaderSeekFrame(&src.Texture->GetVideoState(), src.m_VideoData.RestartVideoFromTimeInSeconds))
+					//	{
+					//		NZ_CORE_WARN("Could not seek video to frame!");
+					//		return;
+					//	}
+					//}
+
+					src.m_VideoData.SeekToFrame = false;
+					src.m_VideoData.SeekVideo = true;
+					src.m_VideoData.SeekAudio = true;
+					src.m_VideoData.IsPlayingAudio = false;					
+					src.m_VideoData.PresentationTimeStamp = 0;
+
+/*#ifdef NZ_DEBUG
+					if (src.Texture->GetVideoState().Framerate >= 23.976 && src.Texture->GetVideoState().Framerate <= 23.976023976023978)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 7.5f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate == 24.0)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 6.0f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate == 25.0)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.125f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate >= 29.97 && src.Texture->GetVideoState().Framerate <= 29.97002997002997)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 1.875f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate == 30.0)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 1.875f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate == 50.0)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 6.25f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate >= 59.94 && src.Texture->GetVideoState().Framerate <= 59.94005994005994)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.75f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+#else
+					if (src.Texture->GetVideoState().Framerate >= 23.976 && src.Texture->GetVideoState().Framerate <= 23.976023976023978)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 15.0f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate == 24.0)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 12.0f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate == 25.0)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 6.25f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate >= 29.97 && src.Texture->GetVideoState().Framerate <= 29.97002997002997)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.75f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate == 30.0)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 3.75f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate == 50.0)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 12.5f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+					else if (src.Texture->GetVideoState().Framerate >= 59.94 && src.Texture->GetVideoState().Framerate <= 59.94005994005994)
+						src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate) + (double)(ts * 7.5f), src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+#endif*/
+					src.Texture->ReadAndPlayAudio(&src.Texture->GetVideoState(), &src.m_VideoData.PresentationTimeStamp, videoTimeStep, src.m_VideoData.SeekAudio, src.m_VideoData.VideoPaused, Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
+
+					src.Texture->DeleteRendererID(src.m_VideoData.VideoRendererID);
+					src.Texture->CloseVideo(&src.Texture->GetVideoState());
+
+					std::filesystem::path filepath = Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video);
+					src.m_VideoData.VideoRendererID = src.Texture->GetIDFromTexture(src.m_VideoData.VideoFrameData, &src.m_VideoData.PresentationTimeStamp, src.m_VideoData.SeekVideo, src.m_VideoData.VideoPaused, filepath, src.m_VideoData.RestartVideoFromTimeInSeconds, src.m_VideoData.CurrentPlayTimeInMilliseconds);
+					src.Texture->SetRendererID(src.m_VideoData.VideoRendererID);
+
+					SetTime(src.m_VideoData.RestartVideoFromTimeInSeconds);
 				}
+			}
 
 			if (s_VideoData.VideoIndexCount >= VideoRendererData::MaxIndices)
 				NextBatch();
@@ -454,35 +700,6 @@ namespace Nutcrackz {
 
 			for (size_t i = 0; i < videoVertexCount; i++)
 			{
-				//rtmcpp::Vec4 positionFinal = rtmcpp::Vec4{
-				//	camRightWS.X * s_VideoData.QuadVertexPositions[i].X * transform.Scale.X + camUpWS.X * s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y + position.X,
-				//	camRightWS.Y * s_VideoData.QuadVertexPositions[i].X * transform.Scale.X + camUpWS.Y * s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y + position.Y,
-				//	camRightWS.Z * s_VideoData.QuadVertexPositions[i].X * transform.Scale.X + camUpWS.Z * s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y + position.Z,
-				//	camRightWS.W * s_VideoData.QuadVertexPositions[i].X * transform.Scale.X + camUpWS.W * s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y + position.W
-				//};
-
-				//s_VideoData.VideoVertexBufferPtr->Position = position + camRightWS * (s_VideoData.QuadVertexPositions[i].X) * transform.Scale.x + camUpWS * s_VideoData.QuadVertexPositions[i].y * transform.Scale.y;
-				//s_VideoData.VideoVertexBufferPtr->Position = rtmcpp::Vec4{ s_VideoData.QuadVertexPositions[i].X, s_VideoData.QuadVertexPositions[i].X,
-				//	s_VideoData.QuadVertexPositions[i].X, s_VideoData.QuadVertexPositions[i].X } * camRightWS
-				//	* rtmcpp::Vec4{ transform.Scale.X, transform.Scale.X, transform.Scale.X, transform.Scale.X }
-				//	+ rtmcpp::Vec4{ s_VideoData.QuadVertexPositions[i].Y, s_VideoData.QuadVertexPositions[i].Y,
-				//	s_VideoData.QuadVertexPositions[i].Y, s_VideoData.QuadVertexPositions[i].Y } * camUpWS
-				//	* rtmcpp::Vec4{ transform.Scale.Y, transform.Scale.Y, transform.Scale.Y, transform.Scale.Y } + position;
-				//s_VideoData.VideoVertexBufferPtr->Position = positionFinal;
-				/*s_VideoData.VideoVertexBufferPtr->Position = position + rtmcpp::Vec4{
-					s_VideoData.QuadVertexPositions[i].X * transform.Scale.X,
-					s_VideoData.QuadVertexPositions[i].X * transform.Scale.X,
-					s_VideoData.QuadVertexPositions[i].X * transform.Scale.X,
-					1.0f
-				}
-				* camRightWS + rtmcpp::Vec4{
-					s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y,
-					s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y,
-					s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y,
-					1.0f
-				}
-				* camUpWS;*/
-
 				s_VideoData.VideoVertexBufferPtr->Position = camUpWS * rtmcpp::Vec4{
 						s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y,
 						s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y,
@@ -520,15 +737,12 @@ namespace Nutcrackz {
 		}
 
 		s_VideoData.VideoIndexCount += 6;
-		//s_Data.Stats.QuadCount++;
 	}
 
-	void VideoRenderer::RenderStartFrame(TransformComponent& transform, VideoRendererComponent& src, VideoData& data, int entityID)
+	void VideoRenderer::RenderFrame(TransformComponent& transform, VideoRendererComponent& src, int entityID)
 	{
 		if (src.Texture == nullptr || src.Texture != AssetManager::GetAsset<VideoTexture>(src.Video))
 			src.Texture = AssetManager::GetAsset<VideoTexture>(src.Video);
-
-		//NZ_CORE_VERIFY(texture);
 
 		constexpr size_t videoVertexCount = 4;
 		int textureIndex = 0;
@@ -539,192 +753,91 @@ namespace Nutcrackz {
 
 		if (src.Texture)
 		{
-			if (data.FramePosition != data.FramePosition * src.Texture->GetVideoState().VideoPacketDuration)
-				data.FramePosition = data.FramePosition * src.Texture->GetVideoState().VideoPacketDuration;
+			if (src.m_VideoData.NumberOfFrames != src.Texture->GetVideoState().NumberOfFrames)
+				src.m_VideoData.NumberOfFrames = src.Texture->GetVideoState().NumberOfFrames;
 
-			SetTime(0.0);
+			if (src.m_VideoData.Hours != src.Texture->GetVideoState().Hours)
+				src.m_VideoData.Hours = src.Texture->GetVideoState().Hours;
 
-			if (data.NumberOfFrames != src.Texture->GetVideoState().NumberOfFrames)
-				data.NumberOfFrames = src.Texture->GetVideoState().NumberOfFrames;
+			if (src.m_VideoData.Minutes != src.Texture->GetVideoState().Mins)
+				src.m_VideoData.Minutes = src.Texture->GetVideoState().Mins;
 
-			if (data.Hours != src.Texture->GetVideoState().Hours)
-				data.Hours = src.Texture->GetVideoState().Hours;
+			if (src.m_VideoData.Seconds != src.Texture->GetVideoState().Secs)
+				src.m_VideoData.Seconds = src.Texture->GetVideoState().Secs;
 
-			if (data.Minutes != src.Texture->GetVideoState().Mins)
-				data.Minutes = src.Texture->GetVideoState().Mins;
+			if (src.m_VideoData.Milliseconds != src.Texture->GetVideoState().Us)
+				src.m_VideoData.Milliseconds = src.Texture->GetVideoState().Us;
 
-			if (data.Seconds != src.Texture->GetVideoState().Secs)
-				data.Seconds = src.Texture->GetVideoState().Secs;
-
-			if (data.Milliseconds != src.Texture->GetVideoState().Us)
-				data.Milliseconds = src.Texture->GetVideoState().Us;
-
-			if (s_VideoData.VideoIndexCount >= VideoRendererData::MaxIndices)
-				NextBatch();
-
-			for (uint32_t i = 1; i < s_VideoData.VideoTextureSlotIndex; i++)
+			if (src.Texture->HasLoadedAudio())
 			{
-				if (*s_VideoData.VideoTextureSlots[i] == *src.Texture)
+				//if (!src.m_VideoData.UseExternalAudio)
 				{
-					textureIndex = i;
-					break;
-				}
-			}
-
-			if (textureIndex == 0)
-			{
-				if (s_VideoData.VideoTextureSlotIndex >= VideoRendererData::MaxTextureSlots)
-					NextBatch();
-
-				textureIndex = s_VideoData.VideoTextureSlotIndex;
-				s_VideoData.VideoTextureSlots[s_VideoData.VideoTextureSlotIndex] = src.Texture;
-
-				s_VideoData.VideoTextureSlotIndex++;
-			}
-		}
-
-		if (data.UseBillboard)
-		{
-			/*glm::vec3 camRightWS = {s_VideoData.m_CameraView[0][0], s_VideoData.m_CameraView[1][0], s_VideoData.m_CameraView[2][0]};
-			glm::vec3 camUpWS = { s_VideoData.m_CameraView[0][1], s_VideoData.m_CameraView[1][1], s_VideoData.m_CameraView[2][1] };
-			glm::vec3 position = { transform.Translation.x, transform.Translation.y, transform.Translation.z };
-
-			for (size_t i = 0; i < videoVertexCount; i++)
-			{
-				s_VideoData.VideoVertexBufferPtr->Position = position + camRightWS * (s_VideoData.QuadVertexPositions[i].x) * transform.Scale.x + camUpWS * s_VideoData.QuadVertexPositions[i].y * transform.Scale.y;*/
-			rtmcpp::Vec4 camRightWS = { s_VideoData.m_CameraView.Value.x_axis.m128_f32[0], s_VideoData.m_CameraView.Value.y_axis.m128_f32[0], s_VideoData.m_CameraView.Value.z_axis.m128_f32[0], 1.0f };
-			rtmcpp::Vec4 camUpWS = { s_VideoData.m_CameraView.Value.x_axis.m128_f32[1], s_VideoData.m_CameraView.Value.y_axis.m128_f32[1], s_VideoData.m_CameraView.Value.z_axis.m128_f32[1], 1.0f };
-			rtmcpp::Vec4 position = { transform.Translation.X, transform.Translation.Y, transform.Translation.Z, 1.0f };
-
-			for (size_t i = 0; i < videoVertexCount; i++)
-			{
-				//s_VideoData.VideoVertexBufferPtr->Position = position + camRightWS * (s_VideoData.QuadVertexPositions[i].X) * transform.Scale.x + camUpWS * s_VideoData.QuadVertexPositions[i].y * transform.Scale.y;
-				/*s_VideoData.VideoVertexBufferPtr->Position = rtmcpp::Vec4{s_VideoData.QuadVertexPositions[i].X, s_VideoData.QuadVertexPositions[i].X,
-					s_VideoData.QuadVertexPositions[i].X, s_VideoData.QuadVertexPositions[i].X } *camRightWS
-					* rtmcpp::Vec4{ transform.Scale.X, transform.Scale.X, transform.Scale.X, transform.Scale.X }
-					+ rtmcpp::Vec4{ s_VideoData.QuadVertexPositions[i].Y, s_VideoData.QuadVertexPositions[i].Y,
-					s_VideoData.QuadVertexPositions[i].Y, s_VideoData.QuadVertexPositions[i].Y } *camUpWS
-					* rtmcpp::Vec4{ transform.Scale.Y, transform.Scale.Y, transform.Scale.Y, transform.Scale.Y } + position;*/
-
-				s_VideoData.VideoVertexBufferPtr->Position = camUpWS * rtmcpp::Vec4{
-					s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y,
-					s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y,
-					s_VideoData.QuadVertexPositions[i].Y * transform.Scale.Y,
-					1.0f
-				} + camRightWS * rtmcpp::Vec4{
-					s_VideoData.QuadVertexPositions[i].X * transform.Scale.X,
-					s_VideoData.QuadVertexPositions[i].X * transform.Scale.X,
-					s_VideoData.QuadVertexPositions[i].X * transform.Scale.X,
-					1.0f
-				} + position;
-
-				/*s_VideoData.VideoVertexBufferPtr->Position = position + camRightWS
-					* rtmcpp::Vec4{ s_VideoData.QuadVertexPositions[i].X, s_VideoData.QuadVertexPositions[i].X,
-					s_VideoData.QuadVertexPositions[i].X, s_VideoData.QuadVertexPositions[i].X }
-					* rtmcpp::Vec4{ transform.Scale.X, transform.Scale.X, transform.Scale.X, transform.Scale.X }
-					+ camUpWS * rtmcpp::Vec4{ s_VideoData.QuadVertexPositions[i].Y, s_VideoData.QuadVertexPositions[i].Y,
-					s_VideoData.QuadVertexPositions[i].Y, s_VideoData.QuadVertexPositions[i].Y }
-					* rtmcpp::Vec4{ transform.Scale.Y, transform.Scale.Y, transform.Scale.Y, transform.Scale.Y };*/
-				s_VideoData.VideoVertexBufferPtr->Color = src.Color;
-				s_VideoData.VideoVertexBufferPtr->TexCoord = textureCoords[i];
-				s_VideoData.VideoVertexBufferPtr->TilingFactor = tilingFactor;
-				s_VideoData.VideoVertexBufferPtr->TexIndex = textureIndex;
-				s_VideoData.VideoVertexBufferPtr->Saturation = src.Saturation;
-				s_VideoData.VideoVertexBufferPtr->EntityID = entityID;
-				s_VideoData.VideoVertexBufferPtr++;
-			}
-		}
-		else
-		{
-			for (size_t i = 0; i < videoVertexCount; i++)
-			{
-				s_VideoData.VideoVertexBufferPtr->Position = s_VideoData.QuadVertexPositions[i] * transform.GetTransform();
-				s_VideoData.VideoVertexBufferPtr->Color = src.Color;
-				s_VideoData.VideoVertexBufferPtr->TexCoord = textureCoords[i];
-				s_VideoData.VideoVertexBufferPtr->TilingFactor = tilingFactor;
-				s_VideoData.VideoVertexBufferPtr->TexIndex = textureIndex;
-				s_VideoData.VideoVertexBufferPtr->Saturation = src.Saturation;
-				s_VideoData.VideoVertexBufferPtr->EntityID = entityID;
-				s_VideoData.VideoVertexBufferPtr++;
-			}
-		}
-
-		s_VideoData.VideoIndexCount += 6;
-	}
-
-	void VideoRenderer::SeekToFrame(TransformComponent& transform, VideoRendererComponent& src, VideoData& data, int entityID)
-	{
-		if (src.Texture == nullptr || src.Texture != AssetManager::GetAsset<VideoTexture>(src.Video))
-			src.Texture = AssetManager::GetAsset<VideoTexture>(src.Video);
-
-		NZ_CORE_VERIFY(src.Texture);
-
-		constexpr size_t videoVertexCount = 4;
-		int textureIndex = 0;
-
-		const rtmcpp::Vec2 tilingFactor(1.0f, 1.0f);
-
-		rtmcpp::Vec2 textureCoords[] = { { 0.0f, 1.0f }, { 1.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f } };
-
-		if (src.Texture)
-		{
-			if (data.NumberOfFrames != src.Texture->GetVideoState().NumberOfFrames)
-				data.NumberOfFrames = src.Texture->GetVideoState().NumberOfFrames;
-
-			if (data.Hours != src.Texture->GetVideoState().Hours)
-				data.Hours = src.Texture->GetVideoState().Hours;
-
-			if (data.Minutes != src.Texture->GetVideoState().Mins)
-				data.Minutes = src.Texture->GetVideoState().Mins;
-
-			if (data.Seconds != src.Texture->GetVideoState().Secs)
-				data.Seconds = src.Texture->GetVideoState().Secs;
-
-			if (data.Milliseconds != src.Texture->GetVideoState().Us)
-				data.Milliseconds = src.Texture->GetVideoState().Us;
-
-			if (data.FramePosition != data.FramePosition * src.Texture->GetVideoState().VideoPacketDuration)
-			{
-				if (src.Texture->HasLoadedAudio())
-				{
-					if (!data.UseExternalAudio)
+					src.Texture->CloseAudio(&src.Texture->GetVideoState());
+				
+					if (!src.Texture->AVReaderSeekFrame(&src.Texture->GetVideoState(), 0, true))
 					{
-						src.Texture->CloseAudio(&src.Texture->GetVideoState());
-
-						if (!src.Texture->AVReaderSeekFrame(&src.Texture->GetVideoState(), 0, true))
-						{
-							NZ_CORE_WARN("Could not seek a/v back to start frame!");
-							return;
-						}
+						NZ_CORE_WARN("Could not seek a/v back to start frame!");
+						return;
 					}
-
-					data.SeekAudio = true;
-					SetTime(0.0);
-					data.RestartPointFromPause = 0.0;
 				}
 
-				if (data.IsRenderingVideo)
-				{
-					SetTime(0.0);
-					data.RestartPointFromPause = 0.0;
-					data.IsRenderingVideo = false;
-				}
+				/*src.Texture->CloseAudio(&src.Texture->GetVideoState());
 
-				data.FramePosition = data.FramePosition * src.Texture->GetVideoState().VideoPacketDuration;
-
-				if (!src.Texture->VideoReaderSeekFrame(&src.Texture->GetVideoState(), data.FramePosition))
+				if (!src.Texture->AudioReaderSeekFrame(&src.Texture->GetVideoState(), 0, true))
 				{
-					NZ_CORE_WARN("Could not seek video back to start frame!");
+					NZ_CORE_WARN("Could not seek a/v back to start frame!");
 					return;
 				}
 
-				data.PresentationTimeStamp = data.FramePosition;
-				src.Texture->DeleteRendererID(data.VideoRendererID);
+				src.m_VideoData.SeekAudio = true;*/
+			}
+
+			SetTime(0.0);
+
+			//double hoursToMilliseconds = (double)src.m_VideoData.SetHours * (double)src.m_VideoData.SetMinutes * (double)src.m_VideoData.SetSeconds * 1000.0;
+			//double minutesToMilliseconds = (double)src.m_VideoData.SetMinutes * (double)src.m_VideoData.SetSeconds * 1000.0;
+			//double secondsToMilliseconds = (double)src.m_VideoData.SetSeconds * 1000.0;
+
+			double hoursToMilliseconds = (double)src.m_VideoData.SetHours;
+			
+			if (hoursToMilliseconds > 0)
+				hoursToMilliseconds = (double)src.m_VideoData.SetHours * 60.0 * 60.0;
+			
+			double minutesToMilliseconds = (double)src.m_VideoData.SetMinutes;
+			
+			if (minutesToMilliseconds > 0)
+				minutesToMilliseconds = (double)src.m_VideoData.SetMinutes * 60.0;
+
+			double secondsToMilliseconds = (double)src.m_VideoData.SetSeconds;
+
+			//if (secondsToMilliseconds > 0)
+			//	secondsToMilliseconds = (double)src.m_VideoData.SetSeconds * 1000.0;
+
+			double videoTimeStep = hoursToMilliseconds + minutesToMilliseconds + secondsToMilliseconds + ((double)src.m_VideoData.SetMilliseconds / 1000.0);
+
+			//NZ_CORE_WARN("VideoTimeStep: {}", videoTimeStep);
+
+			src.m_VideoData.SeekToFrame = false;
+			src.m_VideoData.SeekVideo = true;
+			src.m_VideoData.RestartVideoFromTimeInSeconds = 0.0;
+			//src.m_VideoData.PresentationTimeStamp = src.m_VideoData.FramePosition / int64_t(src.Texture->GetVideoState().Framerate);
+			src.m_VideoData.PresentationTimeStamp = (int64_t)videoTimeStep;
+				
+			//if (src.m_VideoData.OldFramePosition != src.m_VideoData.FramePosition)
+			if (src.m_VideoData.CurrentTime != videoTimeStep)
+			{
+				src.Texture->DeleteRendererID(src.m_VideoData.VideoRendererID);
 
 				std::filesystem::path filepath = Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video);
-				data.VideoRendererID = src.Texture->GetIDFromTexture(data.VideoFrameData, &data.PresentationTimeStamp, data.PauseVideo, filepath);
+				bool seek = true;
+				//src.m_VideoData.VideoRendererID = src.Texture->GetIDFromTexture(src.m_VideoData.VideoFrameData, &src.m_VideoData.PresentationTimeStamp, seek, src.m_VideoData.VideoPaused, filepath, ((double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate));
+				src.m_VideoData.VideoRendererID = src.Texture->GetIDFromTexture(src.m_VideoData.VideoFrameData, &src.m_VideoData.PresentationTimeStamp, seek, src.m_VideoData.VideoPaused, filepath, videoTimeStep, src.m_VideoData.CurrentPlayTimeInMilliseconds);
 
-				src.Texture->SetRendererID(data.VideoRendererID);
+				src.Texture->SetRendererID(src.m_VideoData.VideoRendererID);
+
+				//NZ_CORE_WARN("Time: {}", (double)src.m_VideoData.FramePosition / src.Texture->GetVideoState().Framerate);
+
+				src.m_VideoData.CurrentTime = videoTimeStep;
 			}
 
 			if (s_VideoData.VideoIndexCount >= VideoRendererData::MaxIndices)
@@ -751,16 +864,8 @@ namespace Nutcrackz {
 			}
 		}
 
-		if (data.UseBillboard)
+		if (src.m_VideoData.UseBillboard)
 		{
-			/*glm::vec3 camRightWS = {s_VideoData.m_CameraView[0][0], s_VideoData.m_CameraView[1][0], s_VideoData.m_CameraView[2][0]};
-			glm::vec3 camUpWS = { s_VideoData.m_CameraView[0][1], s_VideoData.m_CameraView[1][1], s_VideoData.m_CameraView[2][1] };
-			glm::vec3 position = { transform.Translation.x, transform.Translation.y, transform.Translation.z };
-
-			for (size_t i = 0; i < videoVertexCount; i++)
-			{
-				s_VideoData.VideoVertexBufferPtr->Position = position + camRightWS * (s_VideoData.QuadVertexPositions[i].x) * transform.Scale.x + camUpWS * s_VideoData.QuadVertexPositions[i].y * transform.Scale.y;*/
-
 			rtmcpp::Vec4 camRightWS = { s_VideoData.m_CameraView.Value.x_axis.m128_f32[0], s_VideoData.m_CameraView.Value.y_axis.m128_f32[0], s_VideoData.m_CameraView.Value.z_axis.m128_f32[0] };
 			rtmcpp::Vec4 camUpWS = { s_VideoData.m_CameraView.Value.x_axis.m128_f32[1], s_VideoData.m_CameraView.Value.y_axis.m128_f32[1], s_VideoData.m_CameraView.Value.z_axis.m128_f32[1] };
 			rtmcpp::Vec4 position = { transform.Translation.X, transform.Translation.Y, transform.Translation.Z, 1.0f };
@@ -808,39 +913,12 @@ namespace Nutcrackz {
 		s_VideoData.VideoIndexCount += 6;
 	}
 
-	void VideoRenderer::DrawVideoSprite(TransformComponent& transform, VideoRendererComponent& src, VideoData& data, int entityID)
+	void VideoRenderer::DrawVideoSprite(TransformComponent& transform, VideoRendererComponent& src, Timestep ts, int entityID)
 	{
-		//NZ_CORE_CRITICAL("Filepath: {}", Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(src.Video));
-
-		s_VideoData.IsPlayingVideo = data.PlayVideo;
-		if (data.PlayVideo)
-		{
-			//m_Transform = transform;
-			//m_Source = src;
-			//m_EntityID = entityID;
-
-			//TransformComponent m_Transform = transform;
-			//VideoRendererComponent m_Source = src;
-			//int m_EntityID = entityID;
-
-			//std::async([=]() mutable
-			//{
-			//	RenderVideo(m_Transform, m_Source, m_EntityID);
-			//});
-
-			//transform = m_Transform;
-			//src = m_Source;
-
-			RenderVideo(transform, src/*, data*/, entityID);
-		}
-		else if (!data.PlayVideo && data.FramePosition == 0)
-		{
-			RenderStartFrame(transform, src, data, entityID);
-		}
-		else if (!data.PlayVideo && data.FramePosition != 0)
-		{
-			SeekToFrame(transform, src, data, entityID);
-		}
+		if (src.m_VideoData.PlayVideo)
+			RenderVideo(transform, src, ts, entityID);
+		else
+			RenderFrame(transform, src, entityID);
 	}
 
 	void VideoRenderer::ResetPacketDuration(VideoRendererComponent& src)
@@ -848,9 +926,8 @@ namespace Nutcrackz {
 		if (src.Texture == nullptr || src.Texture != AssetManager::GetAsset<VideoTexture>(src.Video))
 			src.Texture = AssetManager::GetAsset<VideoTexture>(src.Video);
 
-		NZ_CORE_VERIFY(src.Texture);
-
-		src.Texture->ResetAudioPacketDuration(&src.Texture->GetVideoState());
+		if (src.Texture)
+			src.Texture->ResetAudioPacketDuration(&src.Texture->GetVideoState());
 	}
 
 }

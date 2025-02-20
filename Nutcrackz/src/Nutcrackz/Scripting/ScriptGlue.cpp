@@ -378,8 +378,8 @@ namespace Nutcrackz {
 		NZ_ADD_INTERNAL_CALL(VideoRendererComponent_SetSaturation);
 		NZ_ADD_INTERNAL_CALL(VideoRendererComponent_GetUseBillboard);
 		NZ_ADD_INTERNAL_CALL(VideoRendererComponent_SetUseBillboard);
-		NZ_ADD_INTERNAL_CALL(VideoRendererComponent_GetUseExternalAudio);
-		NZ_ADD_INTERNAL_CALL(VideoRendererComponent_SetUseExternalAudio);
+		//NZ_ADD_INTERNAL_CALL(VideoRendererComponent_GetUseExternalAudio);
+		//NZ_ADD_INTERNAL_CALL(VideoRendererComponent_SetUseExternalAudio);
 		NZ_ADD_INTERNAL_CALL(VideoRendererComponent_GetPlayVideo);
 		NZ_ADD_INTERNAL_CALL(VideoRendererComponent_SetPlayVideo);
 		NZ_ADD_INTERNAL_CALL(VideoRendererComponent_GetRepeatVideo);
@@ -2452,7 +2452,7 @@ namespace Nutcrackz {
 			entity.GetComponent<VideoRendererComponent>().m_VideoData.UseBillboard = useBillboard;
 		}
 
-		bool VideoRendererComponent_GetUseExternalAudio(uint64_t entityID)
+		/*bool VideoRendererComponent_GetUseExternalAudio(uint64_t entityID)
 		{
 			RefPtr<Scene> scene = ScriptEngine::GetInstance().GetCurrentScene();
 			NZ_CORE_ASSERT(scene);
@@ -2470,7 +2470,7 @@ namespace Nutcrackz {
 			NZ_CORE_ASSERT(entity);
 
 			entity.GetComponent<VideoRendererComponent>().m_VideoData.UseExternalAudio = useExternalAudio;
-		}
+		}*/
 
 		bool VideoRendererComponent_GetPlayVideo(uint64_t entityID)
 		{
@@ -2519,7 +2519,7 @@ namespace Nutcrackz {
 			Entity entity = scene->GetEntityByID(entityID);
 			NZ_CORE_ASSERT(entity);
 
-			return entity.GetComponent<VideoRendererComponent>().m_VideoData.PauseVideo;
+			return entity.GetComponent<VideoRendererComponent>().m_VideoData.VideoPaused;
 		}
 
 		void VideoRendererComponent_SetPauseVideo(uint64_t entityID, bool pauseVideo)
@@ -2529,7 +2529,7 @@ namespace Nutcrackz {
 			Entity entity = scene->GetEntityByID(entityID);
 			NZ_CORE_ASSERT(entity);
 
-			entity.GetComponent<VideoRendererComponent>().m_VideoData.PauseVideo = pauseVideo;
+			entity.GetComponent<VideoRendererComponent>().m_VideoData.VideoPaused = pauseVideo;
 		}
 
 		float VideoRendererComponent_GetVolume(uint64_t entityID)

@@ -1038,7 +1038,7 @@ namespace Nutcrackz {
 			out << YAML::Key << "Color" << YAML::Value << videoRendererComponent.Color;
 			out << YAML::Key << "RepeatVideo" << YAML::Value << videoRendererComponent.m_VideoData.RepeatVideo;
 			out << YAML::Key << "VideoHandle" << YAML::Value << videoRendererComponent.Video;
-			out << YAML::Key << "UseExternalAudio" << YAML::Value << videoRendererComponent.m_VideoData.UseExternalAudio;
+			//out << YAML::Key << "UseExternalAudio" << YAML::Value << videoRendererComponent.m_VideoData.UseExternalAudio;
 			
 			if (videoRendererComponent.Video)
 				out << YAML::Key << "Volume" << YAML::Value << videoRendererComponent.m_VideoData.Volume;
@@ -1051,135 +1051,176 @@ namespace Nutcrackz {
 
 	void SceneSerializer::SerializeEntityJSON(yyjson_mut_doc* doc, yyjson_mut_val* root, Entity entity, RefPtr<Scene> scene)
 	{
-		yyjson_mut_obj_add_str(doc, root, "Component", "ScriptComponent");
-		const auto& scriptEngine = ScriptEngine::GetInstance();
-		const auto& sc = entity.GetComponent<ScriptComponent>();
+		uint64_t id = entity.GetEntityHandle();
+		NZ_CORE_INFO("EntityHandle: {}", id);
+		yyjson_mut_obj_add_uint(doc, root, "Entity", id);
 
-		if (scriptEngine.IsValidScript(sc.ScriptHandle))
+		if (entity.HasComponent<TagComponent>())
 		{
-			const auto& scriptMetadata = scriptEngine.GetScriptMetadata(sc.ScriptHandle);
-			const auto& entityStorage = scene->m_ScriptStorage.EntityStorage.at(entity.GetEntityHandle());
+			yyjson_mut_obj_add_str(doc, root, "Component", "TagComponent");
+			auto& tag = entity.GetComponent<TagComponent>().Tag;
+			yyjson_mut_obj_add_str(doc, root, "Tag", tag.c_str());
+		}
 
-			yyjson_mut_obj_add_uint(doc, root, "ScriptHandle", (AssetHandle)sc.ScriptHandle);
-			yyjson_mut_obj_add_str(doc, root, "ScriptName", scriptMetadata.FullName.c_str());
+		if (entity.HasComponent<TransformComponent>())
+		{
+			yyjson_mut_obj_add_str(doc, root, "Component", "TransformComponent");
+			auto& tc = entity.GetComponent<TransformComponent>();
+			yyjson_mut_obj_add_bool(doc, root, "Enabled", tc.Enabled);
+			Vec3ToJson(doc, root, "Translation", rtmcpp::Vec3{ tc.Translation.X, tc.Translation.Y, tc.Translation.Z });
+			Vec3ToJson(doc, root, "Rotation", tc.Rotation);
+			Vec3ToJson(doc, root, "Scale", tc.Scale);
+		}
 
-			yyjson_mut_obj_add_uint(doc, root, "Fields", entityStorage.Fields.size());
+		if (entity.HasComponent<CameraComponent>())
+		{
+			yyjson_mut_obj_add_str(doc, root, "Component", "CameraComponent");
+			auto& cameraComponent = entity.GetComponent<CameraComponent>();
+			auto& camera = cameraComponent.Camera;
 
-			if (entityStorage.Fields.size() > 0)
+			yyjson_mut_obj_add_int(doc, root, "ProjectionType", (int)camera->GetProjectionType());
+			yyjson_mut_obj_add_real(doc, root, "PerspectiveFOV", camera->GetPerspectiveVerticalFOV());
+			yyjson_mut_obj_add_real(doc, root, "PerspectiveNear", camera->GetPerspectiveNearClip());
+			yyjson_mut_obj_add_real(doc, root, "PerspectiveFar", camera->GetPerspectiveFarClip());
+			yyjson_mut_obj_add_real(doc, root, "OrthographicSize", camera->GetOrthographicSize());
+			yyjson_mut_obj_add_real(doc, root, "OrthographicNear", camera->GetOrthographicNearClip());
+			yyjson_mut_obj_add_real(doc, root, "OrthographicFar", camera->GetOrthographicFarClip());
+			yyjson_mut_obj_add_bool(doc, root, "Primary", cameraComponent.Primary);
+			yyjson_mut_obj_add_bool(doc, root, "FixedAspectRatio", cameraComponent.FixedAspectRatio);
+		}
+
+		if (entity.HasComponent<ScriptComponent>())
+		{
+			yyjson_mut_obj_add_str(doc, root, "Component", "ScriptComponent");
+			const auto& scriptEngine = ScriptEngine::GetInstance();
+			const auto& sc = entity.GetComponent<ScriptComponent>();
+
+			if (scriptEngine.IsValidScript(sc.ScriptHandle))
 			{
-				for (const auto& [fieldID, fieldStorage] : entityStorage.Fields)
+				const auto& scriptMetadata = scriptEngine.GetScriptMetadata(sc.ScriptHandle);
+				const auto& entityStorage = scene->m_ScriptStorage.EntityStorage.at(entity.GetEntityHandle());
+
+				yyjson_mut_obj_add_uint(doc, root, "ScriptHandle", (AssetHandle)sc.ScriptHandle);
+				yyjson_mut_obj_add_str(doc, root, "ScriptName", scriptMetadata.FullName.c_str());
+
+				yyjson_mut_obj_add_uint(doc, root, "Fields", entityStorage.Fields.size());
+
+				if (entityStorage.Fields.size() > 0)
 				{
-					const auto& fieldMetadata = scriptMetadata.Fields.at(fieldID);
-
-					yyjson_mut_obj_add_uint(doc, root, "ID", fieldID); // This might cause a bug, when serializing a scene after saving scene, closing scene and reopen scene!
-					yyjson_mut_obj_add_str(doc, root, "Name", fieldMetadata.Name.c_str());
-
-					std::string type = GetDataTypeName(fieldMetadata.Type) + '\0';
-					char* endType = new char[type.length() + 1];
-					std::copy(type.begin(), type.end(), endType);
-
-					yyjson_mut_obj_add_str(doc, root, "Type", endType);
-
-					switch (fieldMetadata.Type)
+					for (const auto& [fieldID, fieldStorage] : entityStorage.Fields)
 					{
-					case DataType::SByte:
-						yyjson_mut_obj_add_int(doc, root, "Value", fieldStorage.GetValue<int8_t>());
-						break;
-					case DataType::Byte:
-						yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<uint8_t>());
-						break;
-					case DataType::Short:
-						yyjson_mut_obj_add_int(doc, root, "Value", fieldStorage.GetValue<int16_t>());
-						break;
-					case DataType::UShort:
-						yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<uint16_t>());
-						break;
-					case DataType::Int:
-						yyjson_mut_obj_add_int(doc, root, "Value", fieldStorage.GetValue<int32_t>());
-						break;
-					case DataType::UInt:
-						yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<uint32_t>());
-						break;
-					case DataType::Long:
-						yyjson_mut_obj_add_int(doc, root, "Value", fieldStorage.GetValue<int64_t>());
-						break;
-					case DataType::ULong:
-						yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<uint64_t>());
-						break;
-					case DataType::Float:
-						yyjson_mut_obj_add_real(doc, root, "Value", (double)fieldStorage.GetValue<float>());
-						break;
-					case DataType::Double:
-						yyjson_mut_obj_add_real(doc, root, "Value", fieldStorage.GetValue<double>());
-						break;
-					case DataType::Bool:
-						yyjson_mut_obj_add_bool(doc, root, "Value", fieldStorage.GetValue<bool>());
-						break;
-					case DataType::String:
-					{
-						char* strData;
-						std::string str = fieldStorage.GetValue<Coral::String>();
-						strData = (char*)malloc(str.size() + 1);
-						strcpy(strData, str.c_str());
+						const auto& fieldMetadata = scriptMetadata.Fields.at(fieldID);
 
-						const char* result = strData;
-						NZ_CORE_WARN("Script string is: {0}", result);
-						yyjson_mut_obj_add_str(doc, root, "Value", result);
-						break;
-					}
-					case DataType::Bool32:
-						yyjson_mut_obj_add_bool(doc, root, "Value", fieldStorage.GetValue<bool>());
-						break;
-					case DataType::AssetHandle:
-						yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<AssetHandle>());
-						break;
-					case DataType::Vector2:
-					{
-						rtmcpp::Vec2 value = fieldStorage.GetValue<rtmcpp::Vec2>();
-						yyjson_mut_obj_add_real(doc, root, "ValueX", value.X);
-						yyjson_mut_obj_add_real(doc, root, "ValueY", value.Y);
-						break;
-					}
-					case DataType::Vector3:
-					{
-						rtmcpp::Vec3 value = fieldStorage.GetValue<rtmcpp::Vec3>();
-						yyjson_mut_obj_add_real(doc, root, "ValueX", value.X);
-						yyjson_mut_obj_add_real(doc, root, "ValueY", value.Y);
-						yyjson_mut_obj_add_real(doc, root, "ValueZ", value.Z);
-						break;
-					}
-					case DataType::Vector4:
-					{
-						rtmcpp::Vec4 value = fieldStorage.GetValue<rtmcpp::Vec4>();
-						yyjson_mut_obj_add_real(doc, root, "ValueX", value.X);
-						yyjson_mut_obj_add_real(doc, root, "ValueY", value.Y);
-						yyjson_mut_obj_add_real(doc, root, "ValueZ", value.Z);
-						yyjson_mut_obj_add_real(doc, root, "ValueW", value.W);
-						break;
-					}
-					//case DataType::Entity:
-					//	out << fieldStorage.GetValue<uint64_t>();
-					//	break;
-					//case DataType::Prefab:
-					//	out << fieldStorage.GetValue<uint64_t>();
-					//	break;
-					//case DataType::Mesh:
-					//	out << fieldStorage.GetValue<uint64_t>();
-					//	break;
-					//case DataType::StaticMesh:
-					//	out << fieldStorage.GetValue<uint64_t>();
-					//	break;
-					//case DataType::Material:
-					//	out << fieldStorage.GetValue<uint64_t>();
-					//	break;
-					//case DataType::Texture2D:
-					//	out << fieldStorage.GetValue<uint64_t>();
-					//	break;
-					//case DataType::Scene:
-					//	out << fieldStorage.GetValue<uint64_t>();
-					//	break;
-					default:
-						break;
+						yyjson_mut_obj_add_uint(doc, root, "ID", fieldID); // This might cause a bug, when serializing a scene after saving scene, closing scene and reopen scene!
+						yyjson_mut_obj_add_str(doc, root, "Name", fieldMetadata.Name.c_str());
+
+						std::string type = GetDataTypeName(fieldMetadata.Type) + '\0';
+						char* endType = new char[type.length() + 1];
+						std::copy(type.begin(), type.end(), endType);
+
+						yyjson_mut_obj_add_str(doc, root, "Type", endType);
+
+						switch (fieldMetadata.Type)
+						{
+						case DataType::SByte:
+							yyjson_mut_obj_add_int(doc, root, "Value", fieldStorage.GetValue<int8_t>());
+							break;
+						case DataType::Byte:
+							yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<uint8_t>());
+							break;
+						case DataType::Short:
+							yyjson_mut_obj_add_int(doc, root, "Value", fieldStorage.GetValue<int16_t>());
+							break;
+						case DataType::UShort:
+							yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<uint16_t>());
+							break;
+						case DataType::Int:
+							yyjson_mut_obj_add_int(doc, root, "Value", fieldStorage.GetValue<int32_t>());
+							break;
+						case DataType::UInt:
+							yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<uint32_t>());
+							break;
+						case DataType::Long:
+							yyjson_mut_obj_add_int(doc, root, "Value", fieldStorage.GetValue<int64_t>());
+							break;
+						case DataType::ULong:
+							yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<uint64_t>());
+							break;
+						case DataType::Float:
+							yyjson_mut_obj_add_real(doc, root, "Value", (double)fieldStorage.GetValue<float>());
+							break;
+						case DataType::Double:
+							yyjson_mut_obj_add_real(doc, root, "Value", fieldStorage.GetValue<double>());
+							break;
+						case DataType::Bool:
+							yyjson_mut_obj_add_bool(doc, root, "Value", fieldStorage.GetValue<bool>());
+							break;
+						case DataType::String:
+						{
+							char* strData;
+							std::string str = fieldStorage.GetValue<Coral::String>();
+							strData = (char*)malloc(str.size() + 1);
+							strcpy(strData, str.c_str());
+
+							const char* result = strData;
+							NZ_CORE_WARN("Script string is: {0}", result);
+							yyjson_mut_obj_add_str(doc, root, "Value", result);
+							break;
+						}
+						case DataType::Bool32:
+							yyjson_mut_obj_add_bool(doc, root, "Value", fieldStorage.GetValue<bool>());
+							break;
+						case DataType::AssetHandle:
+							yyjson_mut_obj_add_uint(doc, root, "Value", fieldStorage.GetValue<AssetHandle>());
+							break;
+						case DataType::Vector2:
+						{
+							rtmcpp::Vec2 value = fieldStorage.GetValue<rtmcpp::Vec2>();
+							yyjson_mut_obj_add_real(doc, root, "ValueX", value.X);
+							yyjson_mut_obj_add_real(doc, root, "ValueY", value.Y);
+							break;
+						}
+						case DataType::Vector3:
+						{
+							rtmcpp::Vec3 value = fieldStorage.GetValue<rtmcpp::Vec3>();
+							yyjson_mut_obj_add_real(doc, root, "ValueX", value.X);
+							yyjson_mut_obj_add_real(doc, root, "ValueY", value.Y);
+							yyjson_mut_obj_add_real(doc, root, "ValueZ", value.Z);
+							break;
+						}
+						case DataType::Vector4:
+						{
+							rtmcpp::Vec4 value = fieldStorage.GetValue<rtmcpp::Vec4>();
+							yyjson_mut_obj_add_real(doc, root, "ValueX", value.X);
+							yyjson_mut_obj_add_real(doc, root, "ValueY", value.Y);
+							yyjson_mut_obj_add_real(doc, root, "ValueZ", value.Z);
+							yyjson_mut_obj_add_real(doc, root, "ValueW", value.W);
+							break;
+						}
+						//case DataType::Entity:
+						//	out << fieldStorage.GetValue<uint64_t>();
+						//	break;
+						//case DataType::Prefab:
+						//	out << fieldStorage.GetValue<uint64_t>();
+						//	break;
+						//case DataType::Mesh:
+						//	out << fieldStorage.GetValue<uint64_t>();
+						//	break;
+						//case DataType::StaticMesh:
+						//	out << fieldStorage.GetValue<uint64_t>();
+						//	break;
+						//case DataType::Material:
+						//	out << fieldStorage.GetValue<uint64_t>();
+						//	break;
+						//case DataType::Texture2D:
+						//	out << fieldStorage.GetValue<uint64_t>();
+						//	break;
+						//case DataType::Scene:
+						//	out << fieldStorage.GetValue<uint64_t>();
+						//	break;
+						default:
+							break;
+						}
 					}
 				}
 			}
@@ -1739,8 +1780,14 @@ namespace Nutcrackz {
 			yyjson_mut_obj_add_real(doc, root, "ColorValueW", videoRendererComponent.Color.W);
 
 			yyjson_mut_obj_add_bool(doc, root, "RepeatVideo", videoRendererComponent.m_VideoData.RepeatVideo);
+			yyjson_mut_obj_add_bool(doc, root, "RepeatVideoFromFramePosition", videoRendererComponent.m_VideoData.RepeatVideoFromFramePosition);
 			yyjson_mut_obj_add_uint(doc, root, "VideoHandle", videoRendererComponent.Video);
-			yyjson_mut_obj_add_bool(doc, root, "UseExternalAudio", videoRendererComponent.m_VideoData.UseExternalAudio);
+			//yyjson_mut_obj_add_bool(doc, root, "UseExternalAudio", videoRendererComponent.m_VideoData.UseExternalAudio);
+			yyjson_mut_obj_add_int(doc, root, "FramePosition", videoRendererComponent.m_VideoData.FramePosition);
+			yyjson_mut_obj_add_int(doc, root, "Hours", videoRendererComponent.m_VideoData.SetHours);
+			yyjson_mut_obj_add_int(doc, root, "Minutes", videoRendererComponent.m_VideoData.SetMinutes);
+			yyjson_mut_obj_add_int(doc, root, "Seconds", videoRendererComponent.m_VideoData.SetSeconds);
+			yyjson_mut_obj_add_real(doc, root, "Milliseconds", videoRendererComponent.m_VideoData.SetMilliseconds);
 
 			if (videoRendererComponent.Video)
 				yyjson_mut_obj_add_real(doc, root, "Volume", videoRendererComponent.m_VideoData.Volume);
@@ -2815,8 +2862,8 @@ namespace Nutcrackz {
 					if (videoRendererComponent["VideoHandle"])
 						src.Video = videoRendererComponent["VideoHandle"].as<AssetHandle>();
 
-					if (videoRendererComponent["UseExternalAudio"])
-						src.m_VideoData.UseExternalAudio = videoRendererComponent["UseExternalAudio"].as<bool>();
+					//if (videoRendererComponent["UseExternalAudio"])
+					//	src.m_VideoData.UseExternalAudio = videoRendererComponent["UseExternalAudio"].as<bool>();
 
 					if (videoRendererComponent["Volume"])
 					{
@@ -4899,11 +4946,35 @@ namespace Nutcrackz {
 
 									key = yyjson_obj_iter_next(&iter);
 									val = yyjson_obj_iter_get_val(key);
-									src.Video = (AssetHandle)yyjson_get_uint(val);
+									src.m_VideoData.RepeatVideoFromFramePosition = yyjson_get_bool(val);
 
 									key = yyjson_obj_iter_next(&iter);
 									val = yyjson_obj_iter_get_val(key);
-									src.m_VideoData.UseExternalAudio = yyjson_get_bool(val);
+									src.Video = (AssetHandle)yyjson_get_uint(val);
+
+									//key = yyjson_obj_iter_next(&iter);
+									//val = yyjson_obj_iter_get_val(key);
+									//src.m_VideoData.UseExternalAudio = yyjson_get_bool(val);
+
+									key = yyjson_obj_iter_next(&iter);
+									val = yyjson_obj_iter_get_val(key);
+									src.m_VideoData.FramePosition = yyjson_get_int(val);
+
+									key = yyjson_obj_iter_next(&iter);
+									val = yyjson_obj_iter_get_val(key);
+									src.m_VideoData.SetHours = yyjson_get_int(val);
+
+									key = yyjson_obj_iter_next(&iter);
+									val = yyjson_obj_iter_get_val(key);
+									src.m_VideoData.SetMinutes = yyjson_get_int(val);
+
+									key = yyjson_obj_iter_next(&iter);
+									val = yyjson_obj_iter_get_val(key);
+									src.m_VideoData.SetSeconds = yyjson_get_int(val);
+
+									key = yyjson_obj_iter_next(&iter);
+									val = yyjson_obj_iter_get_val(key);
+									src.m_VideoData.SetMilliseconds = yyjson_get_real(val);
 
 									{
 										key = yyjson_obj_iter_next(&iter);

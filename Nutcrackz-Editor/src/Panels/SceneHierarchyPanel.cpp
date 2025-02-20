@@ -1934,9 +1934,17 @@ namespace Nutcrackz {
 
 					if (AssetManager::GetAssetType(handle) == AssetType::Video)
 					{
+						if (component.Texture)
+							component.Texture = nullptr;
+
 						CommandHistory::AddAndRemoveCommand(new ChangeAssetHandleCommand(component.Video, handle));
 						component.Video = handle;
 						component.m_VideoData.FramePosition = 0;
+
+						component.m_VideoData.SetHours = 0;
+						component.m_VideoData.SetMinutes = 0;
+						component.m_VideoData.SetSeconds = 0;
+						component.m_VideoData.SetMilliseconds = 0.0;
 					}
 					else
 					{
@@ -1956,6 +1964,14 @@ namespace Nutcrackz {
 					AssetHandle result = 0;
 					CommandHistory::AddAndRemoveCommand(new ChangeAssetHandleCommand(component.Video, result));
 					component.Video = result;
+
+					if (component.Texture)
+						component.Texture = nullptr;
+
+					component.m_VideoData.SetHours = 0;
+					component.m_VideoData.SetMinutes = 0;
+					component.m_VideoData.SetSeconds = 0;
+					component.m_VideoData.SetMilliseconds = 0.0;
 				}
 			}
 
@@ -1973,18 +1989,37 @@ namespace Nutcrackz {
 					component.m_VideoData.Volume = volumeFactor;
 				}
 
-				bool useInternalVideoAudio = component.m_VideoData.UseExternalAudio;
-				if (UI::Property("Use External Audio", useInternalVideoAudio))
-				{
-					CommandHistory::AddAndRemoveCommand(new ChangeBoolCommand(component.m_VideoData.UseExternalAudio, useInternalVideoAudio));
-					component.m_VideoData.UseExternalAudio = useInternalVideoAudio;
-				}
+				//bool useInternalVideoAudio = component.m_VideoData.UseExternalAudio;
+				//if (UI::Property("Use External Audio", useInternalVideoAudio))
+				//{
+				//	CommandHistory::AddAndRemoveCommand(new ChangeBoolCommand(component.m_VideoData.UseExternalAudio, useInternalVideoAudio));
+				//	component.m_VideoData.UseExternalAudio = useInternalVideoAudio;
+				//}
 
 				bool repeatVideo = component.m_VideoData.RepeatVideo;
 				if (UI::Property("Repeat Video", repeatVideo))
 				{
+					if (component.m_VideoData.RepeatVideoFromFramePosition)
+					{
+						CommandHistory::AddAndRemoveCommand(new ChangeBoolCommand(component.m_VideoData.RepeatVideoFromFramePosition, !repeatVideo));
+						component.m_VideoData.RepeatVideoFromFramePosition = !repeatVideo;
+					}
+
 					CommandHistory::AddAndRemoveCommand(new ChangeBoolCommand(component.m_VideoData.RepeatVideo, repeatVideo));
 					component.m_VideoData.RepeatVideo = repeatVideo;
+				}
+
+				bool repeatVideoFromFramePosition = component.m_VideoData.RepeatVideoFromFramePosition;
+				if (UI::Property("Repeat Video From Frame Position", repeatVideoFromFramePosition))
+				{
+					if (component.m_VideoData.RepeatVideo)
+					{
+						CommandHistory::AddAndRemoveCommand(new ChangeBoolCommand(component.m_VideoData.RepeatVideo, !repeatVideoFromFramePosition));
+						component.m_VideoData.RepeatVideo = !repeatVideoFromFramePosition;
+					}
+
+					CommandHistory::AddAndRemoveCommand(new ChangeBoolCommand(component.m_VideoData.RepeatVideoFromFramePosition, repeatVideoFromFramePosition));
+					component.m_VideoData.RepeatVideoFromFramePosition = repeatVideoFromFramePosition;
 				}
 
 				std::string numberOfFramesText = std::to_string(component.m_VideoData.NumberOfFrames);// +" Frames";
@@ -2003,16 +2038,205 @@ namespace Nutcrackz {
 				ostr3 << std::setw(2) << std::setfill('0') << (float)component.m_VideoData.Seconds << ",";
 				ostr4 << std::setw(3) << std::setfill('0') << (float)atof(millisecondsFormat.c_str());
 
-				std::string videoLengthText = ostr1.str() + ostr2.str() + ostr3.str() + ostr4.str();
-				UI::TextProperty("Total Playtime", videoLengthText);
+				double currentMs = component.m_VideoData.CurrentPlayTimeInMilliseconds;
+				double sec = 0.0;
+				double min = 0.0;
+				double hr = 0.0;
+				double ms = (currentMs / 1000.0) - sec;
+
+				if (currentMs >= 1000.0)
+				{
+					sec += 1.0;
+					ms = 0.0;
+				}
+
+				if (sec >= 60.0)
+				{
+					min += 1.0;
+					sec = 0.0;
+				}
+
+				if (min >= 60.0)
+				{
+					hr += 1.0;
+					min = 0.0;
+				}
+
+
+				std::stringstream ostr5;
+
+				ostr5 << /*hr << ":" << min << ":" << sec << "," <<*/ ms << " / ";
+
+				std::string videoLengthText = ostr5.str() + ostr1.str() + ostr2.str() + ostr3.str() + ostr4.str();
+				UI::TextProperty("Playtime", videoLengthText);
 
 				// Consider if it's even worth having seeking integrated into the SceneHierarchyPanel,
 				// or if it's better to ONLY use the VideoEngine's seek function inside the VideoRenderer!
-				//int64_t framePosition = component.m_VideoData.FramePosition;
-				//if (UI::Property("Current Frame", framePosition, 1, 0, component.m_VideoData.NumberOfFrames))
-				//{
-				//	component.m_VideoData.FramePosition = framePosition;
-				//}
+				int64_t framePosition = component.m_VideoData.FramePosition;
+				if (UI::Property("Current Frame", framePosition, 1, 0, component.m_VideoData.NumberOfFrames, component.m_VideoData.PlayVideo))
+				{
+					component.m_VideoData.FramePosition = framePosition;
+				}
+				
+				int64_t hours = component.m_VideoData.SetHours;
+				int64_t hoursToMinutes = component.m_VideoData.SetHours * 60;
+				if (UI::Property("Hours", hours, 1, 0, component.m_VideoData.Hours, component.m_VideoData.PlayVideo))
+				{
+					if (component.m_VideoData.Hours > 0)
+						component.m_VideoData.SetHours = hours;
+				}
+				
+				int64_t minutes = component.m_VideoData.SetMinutes;
+				int64_t minutesToSeconds = component.m_VideoData.SetMinutes * 60;
+				int64_t totalTimeInMinutes = hoursToMinutes + minutes;
+				if (UI::Property("Minutes", minutes, 1, -1, component.m_VideoData.Minutes + hoursToMinutes, component.m_VideoData.PlayVideo))
+				{
+					if (component.m_VideoData.Minutes > -1)
+					{
+						if (component.m_VideoData.SetHours < component.m_VideoData.Hours)
+						{
+							if (minutes > 59)
+							{
+								component.m_VideoData.SetHours += 1;
+								minutes = 0;
+							}
+						}
+						else if (component.m_VideoData.SetHours == component.m_VideoData.Hours)
+						{
+							if (minutes > component.m_VideoData.Minutes)
+								minutes = component.m_VideoData.Minutes;
+						}
+
+						if ((component.m_VideoData.Minutes + totalTimeInMinutes) > 0)
+							component.m_VideoData.SetMinutes = minutes;
+					}
+				}
+				
+				int64_t seconds = component.m_VideoData.SetSeconds;
+				int64_t totalTimeInSeconds = (totalTimeInMinutes * 60) + seconds;
+				if (UI::Property("Seconds", seconds, 1, 0, component.m_VideoData.Seconds + minutesToSeconds, component.m_VideoData.PlayVideo))
+				{
+					if (seconds > 0)
+					{
+						if (component.m_VideoData.SetMinutes < (int64_t)totalTimeInMinutes)
+						{
+							if (seconds > 59)
+							{
+								component.m_VideoData.SetMinutes += 1;
+
+								if (component.m_VideoData.SetMinutes > 59)
+								{
+									component.m_VideoData.SetMinutes = 0;
+									component.m_VideoData.SetHours += 1;
+
+									if (component.m_VideoData.SetHours > component.m_VideoData.Hours)
+										component.m_VideoData.SetHours = component.m_VideoData.Hours;
+								}
+								seconds = 0;
+							}
+						}
+						else if (component.m_VideoData.SetMinutes == component.m_VideoData.Minutes && component.m_VideoData.SetHours == component.m_VideoData.Hours)
+						{
+							if (seconds > component.m_VideoData.Seconds)
+								seconds = component.m_VideoData.Seconds;
+						}
+					}
+
+					if (component.m_VideoData.Seconds + minutesToSeconds > 0)
+						component.m_VideoData.SetSeconds = seconds;
+				}
+				
+				int64_t maxMilliseconds = component.m_VideoData.Milliseconds / 1000;
+				double milliseconds = component.m_VideoData.SetMilliseconds;
+				double totalTimeInMilliseconds = (totalTimeInSeconds * 1000) + milliseconds;
+
+				double framerate = 0.0;
+				if (component.Texture)
+				{
+					if (component.Texture->GetVideoState().Framerate >= 23.976 && component.Texture->GetVideoState().Framerate <= 23.976023976023978)
+						framerate = 24.0;
+					else if (component.Texture->GetVideoState().Framerate >= 29.97 && component.Texture->GetVideoState().Framerate <= 29.97002997002997)
+						framerate = 30.0;
+					else if (component.Texture->GetVideoState().Framerate >= 59.94 && component.Texture->GetVideoState().Framerate <= 59.94005994005994)
+						framerate = 60.0;
+					else
+						framerate = component.Texture->GetVideoState().Framerate;
+				}
+
+				if (UI::Property("Milliseconds", milliseconds, framerate, 0.0, (double)component.m_VideoData.Milliseconds, component.m_VideoData.PlayVideo, true))
+				{					
+					totalTimeInMilliseconds = (totalTimeInSeconds * 1000) + milliseconds;
+					NZ_CORE_WARN("totalTimeInMilliseconds: {}", totalTimeInMilliseconds);
+
+					if (milliseconds > 0)
+					{
+						//if (milliseconds > 0 && milliseconds < component.Texture->GetVideoState().Framerate)
+						//	milliseconds = component.Texture->GetVideoState().Framerate;
+
+						if (component.m_VideoData.SetSeconds < (int64_t)totalTimeInSeconds)
+						{
+							if (milliseconds > 999)
+							{
+								component.m_VideoData.SetSeconds += 1;
+
+								if (component.m_VideoData.SetSeconds > 59)
+								{
+									component.m_VideoData.SetSeconds = 0;
+									component.m_VideoData.SetMinutes += 1;
+
+									if (component.m_VideoData.SetMinutes > 59)
+									{
+										component.m_VideoData.SetMinutes = 0;
+										component.m_VideoData.SetHours += 1;
+
+										if (component.m_VideoData.SetHours > component.m_VideoData.Hours)
+											component.m_VideoData.SetHours = component.m_VideoData.Hours;
+									}
+								}
+
+								milliseconds = 0;
+							}
+						}
+						else if (component.m_VideoData.SetSeconds == component.m_VideoData.Seconds && component.m_VideoData.SetMinutes == component.m_VideoData.Minutes && component.m_VideoData.SetHours == component.m_VideoData.Hours)
+						{
+							if (milliseconds > maxMilliseconds)
+								milliseconds = maxMilliseconds;
+						}
+					}
+					//else if (milliseconds < 0)
+					//{
+					//	component.m_VideoData.SetSeconds = component.m_VideoData.SetSeconds - 1;
+					//	milliseconds = 999;
+					//}
+
+					if ((totalTimeInMilliseconds + (double)component.m_VideoData.Milliseconds) > 0.0)
+						component.m_VideoData.SetMilliseconds = milliseconds;
+					//if (milliseconds < component.m_VideoData.Milliseconds && component.m_VideoData.SetSeconds != component.m_VideoData.Seconds && component.m_VideoData.SetMinutes != component.m_VideoData.Minutes && component.m_VideoData.SetHours != component.m_VideoData.Hours)
+					//	component.m_VideoData.SetMilliseconds = milliseconds;
+				}
+
+				if (component.m_VideoData.SetMinutes < (int64_t)totalTimeInMinutes)
+				{
+					if (component.m_VideoData.SetSeconds > 59)
+					{
+						component.m_VideoData.SetMinutes += 1;
+
+						if (component.m_VideoData.SetMinutes > 59)
+						{
+							component.m_VideoData.SetMinutes = 0;
+							component.m_VideoData.SetHours += 1;
+
+							if (component.m_VideoData.SetHours > component.m_VideoData.Hours)
+								component.m_VideoData.SetHours = component.m_VideoData.Hours;
+						}
+						component.m_VideoData.SetSeconds = 0;
+					}
+				}
+				else if (component.m_VideoData.SetMinutes == component.m_VideoData.Minutes && component.m_VideoData.SetHours == component.m_VideoData.Hours)
+				{
+					if (component.m_VideoData.SetSeconds > component.m_VideoData.Seconds)
+						component.m_VideoData.SetSeconds = component.m_VideoData.Seconds;
+				}
 			}
 
 			UI::EndPropertyGrid();

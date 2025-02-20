@@ -297,19 +297,27 @@ namespace Nutcrackz {
 				{
 					if (vc.Texture->HasLoadedAudio())
 					{
-						if (!vc.m_VideoData.UseExternalAudio)
+						//if (!vc.m_VideoData.UseExternalAudio)
+						//{
+						//	if (!vc.Texture->AVReaderSeekFrame(&vc.Texture->GetVideoState(), vc.m_VideoData.FramePosition / float(vc.Texture->GetVideoState().Framerate), true))
+						//	{
+						//		NZ_CORE_WARN("Could not seek a/v back to start frame!");
+						//		return;
+						//	}
+						//
+						//	vc.Texture->CloseAudio(&vc.Texture->GetVideoState());
+						//}
+						//else
 						{
-							if (!vc.Texture->AVReaderSeekFrame(&vc.Texture->GetVideoState(), 0, true))
+							if (!vc.Texture->AudioReaderSeekFrame(&vc.Texture->GetVideoState(), vc.m_VideoData.FramePosition / float(vc.Texture->GetVideoState().Framerate), true))
 							{
-								NZ_CORE_WARN("Could not seek a/v back to start frame!");
+								NZ_CORE_WARN("Could not seek audio back to start frame!");
 								return;
 							}
 
 							vc.Texture->CloseAudio(&vc.Texture->GetVideoState());
-						}
-						else
-						{
-							if (!vc.Texture->VideoReaderSeekFrame(&vc.Texture->GetVideoState(), 0))
+
+							if (!vc.Texture->VideoReaderSeekFrame(&vc.Texture->GetVideoState(), vc.m_VideoData.FramePosition / float(vc.Texture->GetVideoState().Framerate)))
 							{
 								NZ_CORE_WARN("Could not seek video back to start frame!");
 								return;
@@ -319,19 +327,17 @@ namespace Nutcrackz {
 						vc.m_VideoData.SeekAudio = true;
 					}
 
+					vc.m_VideoData.SeekVideo = true;
 					vc.Texture->DeleteRendererID(vc.m_VideoData.VideoRendererID);
 					vc.Texture->CloseVideo(&vc.Texture->GetVideoState());
 
 					std::filesystem::path filepath = Project::GetActiveAssetDirectory() / Project::GetActive()->GetEditorAssetManager()->GetFilePath(vc.Video);
-					vc.m_VideoData.VideoRendererID = vc.Texture->GetIDFromTexture(vc.m_VideoData.VideoFrameData, &vc.m_VideoData.PresentationTimeStamp, vc.m_VideoData.PauseVideo, filepath);
+					bool seek = false;
+					vc.m_VideoData.VideoRendererID = vc.Texture->GetIDFromTexture(vc.m_VideoData.VideoFrameData, &vc.m_VideoData.PresentationTimeStamp, seek, vc.m_VideoData.VideoPaused, filepath, 0, vc.m_VideoData.CurrentPlayTimeInMilliseconds);
 
 					vc.Texture->SetRendererID(vc.m_VideoData.VideoRendererID);
 
 					vc.m_VideoData.PresentationTimeStamp = 0;
-					vc.m_VideoData.RestartPointFromPause = 0.0;
-
-					if (vc.m_VideoData.IsRenderingVideo)
-						vc.m_VideoData.IsRenderingVideo = false;
 				}
 			});
 		}
@@ -1051,9 +1057,9 @@ namespace Nutcrackz {
 				filter.each([&](flecs::entity entity, TransformComponent& transform, VideoRendererComponent& video)
 				{
 					if ((!m_IsPaused && !s_SetPaused) || m_StepFrames-- > 0)
-						video.m_VideoData.PauseVideo = false;
+						video.m_VideoData.VideoPaused = false;
 					else
-						video.m_VideoData.PauseVideo = true;
+						video.m_VideoData.VideoPaused = true;
 
 					if (IsSpriteVisibleToCamera(false, transform.Translation, transform.Scale, m_SceneCameraPosition, m_SceneCameraSize))
 					{
@@ -1062,7 +1068,7 @@ namespace Nutcrackz {
 							if (!video.m_VideoData.PlayVideo)
 								video.m_VideoData.PlayVideo = true;
 
-							VideoRenderer::DrawVideoSprite(transform, video, video.m_VideoData, (int)entity);
+							VideoRenderer::DrawVideoSprite(transform, video, ts, (int)entity);
 						}
 					}
 				});
@@ -2060,9 +2066,9 @@ namespace Nutcrackz {
 			filter.each([&](flecs::entity entity, TransformComponent& transform, VideoRendererComponent& video)
 			{
 				if ((!m_IsPaused && !s_SetPaused) || m_StepFrames-- > 0)
-					video.m_VideoData.PauseVideo = false;
+					video.m_VideoData.VideoPaused = false;
 				else
-					video.m_VideoData.PauseVideo = true;
+					video.m_VideoData.VideoPaused = true;
 
 				if (IsSpriteVisibleToCamera(true, transform.Translation, transform.Scale, m_EditorCameraPosition))
 				{
@@ -2074,7 +2080,7 @@ namespace Nutcrackz {
 							video.m_VideoData.PlayVideo = false;
 						}
 
-						VideoRenderer::DrawVideoSprite(transform, video, video.m_VideoData, (int)entity);
+						VideoRenderer::DrawVideoSprite(transform, video, ts, (int)entity);
 					}
 				}
 			});

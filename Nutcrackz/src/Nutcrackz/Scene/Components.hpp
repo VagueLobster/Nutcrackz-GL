@@ -49,13 +49,16 @@ namespace Nutcrackz {
 	struct VideoData
 	{
 		bool UseBillboard = false;
-		bool UseExternalAudio = false;
+		//bool UseExternalAudio = false;
 		bool PlayVideo = false;
 		bool RepeatVideo = false;
-		bool PauseVideo = false;
+		bool RepeatVideoFromFramePosition = false;
+		bool VideoPaused = false;
 		bool HasInitializedTimer = false;
-		bool IsRenderingVideo = false;
+		bool IsPlayingAudio = false;
+		bool SeekVideo = true;
 		bool SeekAudio = true;
+		bool SeekToFrame = false;
 
 		uint8_t* VideoFrameData = nullptr;
 		uint32_t VideoRendererID = 0;
@@ -63,16 +66,23 @@ namespace Nutcrackz {
 		int64_t PresentationTimeStamp = 0;
 		int64_t NumberOfFrames = 0;
 		int64_t FramePosition = 0;
+		int64_t OldFramePosition = 0;
 		int64_t Hours = 0;
 		int64_t Minutes = 0;
 		int64_t Seconds = 0;
 		int64_t Milliseconds = 0;
+		int64_t SetHours = 0;
+		int64_t SetMinutes = 0;
+		int64_t SetSeconds = 0;
+		double SetMilliseconds = 0;
 
 		float Volume = 100.0f;
 
-		double RestartPointFromPause = 0.0;
 		double PresentationTimeInSeconds = 0.0;
+		double RestartVideoFromTimeInSeconds = 0.0;
 		double VideoDuration = 0.0;
+		double CurrentTime = 0.0;
+		double CurrentPlayTimeInMilliseconds = 0.0;
 	};
 
 	struct AudioData // For audio sources only!
